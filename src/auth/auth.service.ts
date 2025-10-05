@@ -317,6 +317,7 @@ export class AuthService {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { jti },
     });
+
     if (!stored || stored.userId !== user.id || stored.revokedAt) {
       throw new ForbiddenException({ code: 'REFRESH_TOKEN_REVOKED' });
     }

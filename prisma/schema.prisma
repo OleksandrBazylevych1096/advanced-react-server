@@ -22,10 +22,22 @@ model User {
   provider     AuthProvider @default(LOCAL)
   isVerified   Boolean   @default(false)
   verifiedAt   DateTime?
+  firstName    String?
+  lastName     String?
+  avatar       String?
+  address      String?
+  city         String?
+  country      String?
+  postalCode   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt @default(now())
     
   verificationCodes VerificationCode[]
-
   refreshTokens     RefreshToken[]
+  cartItems         CartItem[]
+  orders            Order[]
+  reviews           Review[]
+  favoriteProducts  FavoriteProduct[]
    
   @@map("users")
 }
@@ -67,4 +79,255 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("refresh_tokens")
+}
+
+
+model Category {
+  id          String    @id @default(cuid())
+  name        String    @unique // Fallback
+  description String?   // Fallback
+  slug        String    @unique // Fallback
+  image       String?
+  icon        String?
+  parentId    String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  parent       Category?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children     Category[] @relation("CategoryParent")
+  products     Product[]  @relation("ProductCategories")
+  translations CategoryTranslation[] // Додайте це поле
+
+  @@map("categories")
+}
+
+
+model CategoryTranslation {
+  id          String   @id @default(cuid())
+  categoryId  String
+  locale      String
+  name        String
+  description String?
+  slug        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, locale])
+  @@unique([locale, slug])
+  @@map("category_translations")
+}
+
+
+model Product {
+  id              String     @id @default(uuid())
+  name            String     // Залишаємо як fallback
+  slug            String     @unique // Залишаємо як fallback
+  shortDescription String?   // Залишаємо як fallback
+  description     String?    // Залишаємо як fallback
+  price           Decimal    @db.Decimal(10,2)
+  oldPrice        Decimal?   @db.Decimal(10,2)
+  stock           Int        @default(0)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  categories       Category[]  @relation("ProductCategories")
+  tags             Tag[]       @relation("ProductTags")
+  images           ProductImage[]
+  reviews          Review[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
+  favoriteProducts FavoriteProduct[]
+  translations     ProductTranslation[] // Додайте це поле
+
+  @@map("products")
+}
+
+model ProductTranslation {
+  id               String   @id @default(cuid())
+  productId        String
+  locale           String   
+  name             String
+  shortDescription String?
+  description      String?
+  slug             String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locale])
+  @@unique([locale, slug])
+  @@map("product_translations")
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  url       String
+  alt       String?
+  isMain    Boolean @default(false)
+  order     Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("product_images")
+}
+
+model CartItem {
+  id        String @id @default(cuid())
+  userId    String
+  productId String
+  quantity  Int    @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("cart_items")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  orderNumber     String      @unique
+  status          OrderStatus @default(PENDING)
+  totalAmount     Decimal     @db.Decimal(10, 2)
+  shippingAmount  Decimal     @db.Decimal(10, 2) @default(0)
+  taxAmount       Decimal     @db.Decimal(10, 2) @default(0)
+  discountAmount  Decimal     @db.Decimal(10, 2) @default(0)
+  
+  // Shipping information
+  shippingAddress String
+  shippingCity    String
+  shippingCountry String
+  shippingPostal  String
+  
+  // Billing information
+  billingAddress  String?
+  billingCity     String?
+  billingCountry  String?
+  billingPostal   String?
+  
+  paymentMethod   String?
+  paymentStatus   PaymentStatus @default(PENDING)
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user       User        @relation(fields: [userId], references: [id])
+  orderItems OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+  total     Decimal @db.Decimal(10, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@map("order_items")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  rating    Int      // 1-5 stars
+  title     String?
+  comment   String?
+  isVerified Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("reviews")
+}
+
+model FavoriteProduct {
+  id        String   @id @default(cuid())
+  userId    String
+  productId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@map("favorite_products")
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+
+model TagTranslation {
+  id          String   @id @default(cuid())
+  tagId       String
+  locale      String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, locale])
+  @@map("tag_translations")
+}
+
+model Tag {
+  id          String    @id @default(cuid())
+  name        String    @unique // Fallback
+  slug        String    @unique
+  description String?   // Fallback
+  color       String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  products     Product[] @relation("ProductTags")
+  translations TagTranslation[] // Додайте це поле
+
+  @@map("tags")
+}
+
+model PromoBanner {
+  id          String    @id @default(cuid())
+  imageUrl    String
+  title       String?
+  description String?
+  link        String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("promo_banners")
 }

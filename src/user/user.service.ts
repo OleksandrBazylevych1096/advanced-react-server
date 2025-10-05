@@ -1,4 +1,3 @@
-// user/user.service.ts
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from '../auth/dto/register.dto';
@@ -29,7 +28,6 @@ export class UserService {
         email: true,
         phone: true,
         isVerified: true,
-        createdAt: true,
       },
     });
 
@@ -76,13 +74,13 @@ export class UserService {
   }
 
   async findByEmail(email: string) {
-    return this.prisma.user.findUnique({
+    return await this.prisma.user.findUnique({
       where: { email },
     });
   }
 
   async findByPhone(phone: string) {
-    return this.prisma.user.findUnique({
+    return await this.prisma.user.findUnique({
       where: { phone },
     });
   }
@@ -98,17 +96,17 @@ export class UserService {
   }
 
   async findByGoogleId(googleId: string) {
-    return this.prisma.user.findUnique({
+    return await this.prisma.user.findUnique({
       where: { googleId },
     });
   }
 
   async findOne(id: string) {
-    return this.prisma.user.findUnique({ where: { id } });
+    return await this.prisma.user.findUnique({ where: { id } });
   }
 
   async verifyUser(userId: string) {
-    return this.prisma.user.update({
+    return await this.prisma.user.update({
       where: { id: userId },
       data: {
         isVerified: true,
