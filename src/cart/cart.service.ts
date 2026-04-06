@@ -7,12 +7,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { Prisma } from '@prisma/client';
+import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
 
 @Injectable()
 export class CartService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private exchangeRateService: ExchangeRateService,
+  ) {}
 
-  async addToCart(userId: string, addToCartDto: AddToCartDto) {
+  async addToCart(
+    userId: string,
+    addToCartDto: AddToCartDto,
+    locale: string = 'en',
+    currency: string = 'USD',
+  ) {
     const { productId, quantity } = addToCartDto;
 
     // Check if product exists and is active
@@ -54,7 +63,7 @@ export class CartService {
         );
       }
 
-      return this.prisma.cartItem.update({
+      await this.prisma.cartItem.update({
         where: {
           userId_productId: {
             userId,
@@ -73,9 +82,10 @@ export class CartService {
           },
         },
       });
+      return this.getCart(userId, locale, currency);
     } else {
       // Create new cart item
-      return this.prisma.cartItem.create({
+      await this.prisma.cartItem.create({
         data: {
           userId,
           productId,
@@ -90,10 +100,16 @@ export class CartService {
           },
         },
       });
+      return this.getCart(userId, locale, currency);
     }
   }
 
-  async getCart(userId: string) {
+  async getCart(
+    userId: string,
+    locale: string = 'en',
+    currency: string = 'USD',
+  ) {
+    const normalizedCurrency = (currency || 'USD').toUpperCase();
     const cartItems = await this.prisma.cartItem.findMany({
       where: { userId },
       include: {
@@ -101,6 +117,11 @@ export class CartService {
           include: {
             images: true,
             categories: true,
+            translations: locale
+              ? {
+                  where: { locale },
+                }
+              : true,
           },
         },
       },
@@ -109,29 +130,44 @@ export class CartService {
       },
     });
 
+    const transformedCartItems = await Promise.all(
+      cartItems.map(async (item) => ({
+        ...item,
+        product: await this.localizeAndConvertCartProduct(
+          item.product as any,
+          locale,
+          normalizedCurrency,
+        ),
+      })),
+    );
+
     // Calculate totals
-    const subtotal = cartItems.reduce((total, item) => {
-      const itemProduct = item as any;
+    const subtotal = transformedCartItems.reduce((total, item) => {
+      const itemProduct = item.product as any;
       const price =
-        itemProduct.product.price instanceof Prisma.Decimal
-          ? itemProduct.product.price.toNumber()
-          : Number(itemProduct.product.price);
+        itemProduct.price instanceof Prisma.Decimal
+          ? itemProduct.price.toNumber()
+          : Number(itemProduct.price);
       return total + price * item.quantity;
     }, 0);
 
-    const totalItems = cartItems.reduce(
+    const totalItems = transformedCartItems.reduce(
       (total, item) => total + item.quantity,
       0,
     );
 
+    const estimatedShipping = 0;
+    const estimatedTax = subtotal * 0.1;
+
     return {
-      items: cartItems,
+      items: transformedCartItems,
       totals: {
         subtotal,
+        freeShippingTarget: 200,
         totalItems,
-        estimatedShipping: 0, // Can be calculated based on business logic
-        estimatedTax: subtotal * 0.1, // 10% tax rate as example
-        total: subtotal + subtotal * 0.1,
+        estimatedShipping,
+        estimatedTax,
+        total: subtotal + estimatedShipping + estimatedTax,
       },
     };
   }
@@ -232,7 +268,7 @@ export class CartService {
     return result._sum.quantity || 0;
   }
 
-  async validateCartItems(userId: string) {
+  async validateCartItems(userId: string, locale: string = 'en') {
     const cartItems = await this.prisma.cartItem.findMany({
       where: { userId },
       include: {
@@ -247,12 +283,16 @@ export class CartService {
 
       // Check if product is still available
       if (item.product.stock <= 0) {
-        issues.push('Product is no longer available');
+        issues.push(this.localizeValidationIssue('PRODUCT_UNAVAILABLE', locale));
       }
 
       // Check stock availability
       if (item.product.stock < item.quantity) {
-        issues.push(`Only ${item.product.stock} items in stock`);
+        issues.push(
+          this.localizeValidationIssue('INSUFFICIENT_STOCK', locale, {
+            available: item.product.stock,
+          }),
+        );
       }
 
       validationResults.push({
@@ -268,7 +308,12 @@ export class CartService {
     return validationResults;
   }
 
-  async syncCartAfterLogin(guestCartItems: any[], userId: string) {
+  async syncCartAfterLogin(
+    guestCartItems: any[],
+    userId: string,
+    locale: string = 'en',
+    currency: string = 'USD',
+  ) {
     // Merge guest cart with user's existing cart
     for (const guestItem of guestCartItems) {
       try {
@@ -285,6 +330,72 @@ export class CartService {
       }
     }
 
-    return this.getCart(userId);
+    return this.getCart(userId, locale, currency);
+  }
+
+  private async localizeAndConvertCartProduct(
+    product: any,
+    locale: string,
+    currency: string,
+  ) {
+    const translation =
+      product.translations?.find((t: any) => t.locale === locale) ||
+      product.translations?.[0];
+
+    if (translation) {
+      product.name = translation.name;
+      product.slug = translation.slug;
+      product.shortDescription = translation.shortDescription;
+      product.description = translation.description;
+    }
+
+    const basePrice =
+      product.price instanceof Prisma.Decimal
+        ? product.price.toNumber()
+        : Number(product.price);
+
+    product.price =
+      currency !== 'USD'
+        ? await this.exchangeRateService.convertPrice(basePrice, 'USD', currency)
+        : basePrice;
+
+    if (product.oldPrice !== null && product.oldPrice !== undefined) {
+      const baseOldPrice =
+        product.oldPrice instanceof Prisma.Decimal
+          ? product.oldPrice.toNumber()
+          : Number(product.oldPrice);
+      product.oldPrice =
+        currency !== 'USD'
+          ? await this.exchangeRateService.convertPrice(
+              baseOldPrice,
+              'USD',
+              currency,
+            )
+          : baseOldPrice;
+    }
+
+    delete product.translations;
+    return product;
+  }
+
+  private localizeValidationIssue(
+    code: 'PRODUCT_UNAVAILABLE' | 'INSUFFICIENT_STOCK',
+    locale: string,
+    params?: { available?: number },
+  ): string {
+    const normalizedLocale = locale || 'en';
+
+    if (code === 'PRODUCT_UNAVAILABLE') {
+      if (normalizedLocale === 'de') {
+        return 'Produkt ist nicht mehr verfügbar';
+      }
+      return 'Product is no longer available';
+    }
+
+    const available = params?.available ?? 0;
+    if (normalizedLocale === 'de') {
+      return `Nur ${available} Stück auf Lager`;
+    }
+    return `Only ${available} items in stock`;
   }
 }

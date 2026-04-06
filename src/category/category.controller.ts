@@ -49,11 +49,6 @@ export class CategoryController {
     return this.categoryService.findBySlug(slug, locale);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string, @Query('locale') locale?: string) {
-    return this.categoryService.findOne(id, locale);
-  }
-
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   update(
@@ -77,22 +72,51 @@ export class CategoryController {
     return this.categoryService.findChildrenBySlug(slug, locale);
   }
 
-  @Get('breadcrumbs/:slug')
-  async getBreadcrumbsBySlug(
-    @Param('slug') slug: string,
+  @Get('breadcrumbs/:value')
+  async getBreadcrumbs(
+    @Param('value') value: string,
     @Query('locale') locale: string = 'en',
   ) {
-    return this.categoryService.getBreadcrumbsBySlug(slug, locale);
+    const looksLikeId = /^[a-z0-9]{12,}$/i.test(value);
+    if (looksLikeId) {
+      try {
+        const category = await this.categoryService.findOne(value, locale);
+        return this.categoryService.getBreadcrumbsBySlug(category.slug, locale);
+      } catch {
+        // Fallback to slug lookup.
+      }
+    }
+    return this.categoryService.getBreadcrumbsBySlug(value, locale);
   }
 
   @Get('navigation/:slug')
   async getCategoryNavigation(
     @Param('slug') slug: string | undefined,
+    @Query('search') search: string | undefined,
     @Query('locale') locale: string = 'en',
   ) {
     return this.categoryService.getCategoryNavigation(
       slug === 'undefined' ? undefined : slug,
       locale,
+      search,
     );
+  }
+
+  @Get('navigation')
+  async getCategoryNavigationByQuery(
+    @Query('slug') slug: string | undefined,
+    @Query('search') search: string | undefined,
+    @Query('locale') locale: string = 'en',
+  ) {
+    return this.categoryService.getCategoryNavigation(
+      slug === 'undefined' ? undefined : slug,
+      locale,
+      search,
+    );
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: string, @Query('locale') locale?: string) {
+    return this.categoryService.findOne(id, locale);
   }
 }

@@ -29,13 +29,13 @@ export class OrderController {
   @UseGuards(JwtAuthGuard)
   findAll(@Query() query: OrderQueryDto) {
     // This endpoint can be used by admins to see all orders
-    return this.orderService.findAll(query);
+    return this.orderService.findAll(query, undefined, query.locale || 'en');
   }
 
   @Get('my-orders')
   @UseGuards(JwtAuthGuard)
   getUserOrders(@GetUserId() userId: string, @Query() query: OrderQueryDto) {
-    return this.orderService.getUserOrders(userId, query);
+    return this.orderService.getUserOrders(userId, query, query.locale || 'en');
   }
 
   @Get('stats')
@@ -57,14 +57,29 @@ export class OrderController {
   findByOrderNumber(
     @Param('orderNumber') orderNumber: string,
     @GetUserId() userId: string,
+    @Query('locale') locale?: string,
   ) {
-    return this.orderService.findByOrderNumber(orderNumber, userId);
+    return this.orderService.findByOrderNumber(orderNumber, userId, locale || 'en');
   }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  findOne(@Param('id') id: string, @GetUserId() userId: string) {
-    return this.orderService.findOne(id, userId);
+  findOne(
+    @Param('id') id: string,
+    @GetUserId() userId: string,
+    @Query('locale') locale?: string,
+  ) {
+    return this.orderService.findOne(id, userId, locale || 'en');
+  }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard)
+  cancel(
+    @Param('id') id: string,
+    @GetUserId() userId: string,
+    @Query('locale') locale?: string,
+  ) {
+    return this.orderService.cancelOrder(id, userId, locale || 'en');
   }
 
   @Patch(':id')

@@ -576,45 +576,14 @@ export class CategoryService {
     );
   }
 
-  async getCategoryNavigation(slug?: string, locale: string = 'en') {
-    // Якщо slug не передано - повертаємо топ-рівень категорії
-    if (!slug) {
-      const categories = await this.prisma.category.findMany({
-        where: {
-          parentId: null,
-          isActive: true,
-        },
-        include: this.getIncludeWithTranslations(locale),
-      });
-
-      return {
-        currentCategory: null,
-        parentCategory: null,
-        items: categories.map((cat) =>
-          this.transformCategoryWithTranslation(cat, locale),
-        ),
-        isShowingSubcategories: false,
-        breadcrumbs: [],
-      };
-    }
-
-    let category = await this.prisma.category.findUnique({
+  private async findActiveCategoryBySlugWithParent(
+    slug: string,
+    locale: string,
+  ) {
+    let category = await this.prisma.category.findFirst({
       where: { slug, isActive: true },
       include: {
         parent: {
-          include: {
-            translations: locale ? { where: { locale } } : true,
-            children: {
-              where: { isActive: true },
-              include: {
-                translations: locale ? { where: { locale } } : true,
-                _count: { select: { products: true } },
-              },
-            },
-          },
-        },
-        children: {
-          where: { isActive: true },
           include: {
             translations: locale ? { where: { locale } } : true,
             _count: { select: { products: true } },
@@ -625,91 +594,234 @@ export class CategoryService {
       },
     });
 
-    if (!category) {
-      const translation = await this.prisma.categoryTranslation.findFirst({
-        where: { slug },
-        include: {
-          category: {
-            include: {
-              parent: {
-                include: {
-                  translations: locale ? { where: { locale } } : true,
-                  children: {
-                    where: { isActive: true },
-                    include: {
-                      translations: locale ? { where: { locale } } : true,
-                      _count: { select: { products: true } },
-                    },
+    if (category) return category;
+
+    const translation = await this.prisma.categoryTranslation.findFirst({
+      where: { slug, category: { isActive: true } },
+      include: {
+        category: {
+          include: {
+            parent: {
+              include: {
+                translations: locale ? { where: { locale } } : true,
+                _count: { select: { products: true } },
+              },
+            },
+            translations: locale ? { where: { locale } } : true,
+            _count: { select: { products: true } },
+          },
+        },
+      },
+    });
+
+    return translation?.category ?? null;
+  }
+
+  private async getTopLevelCategoriesBySearch(search: string, locale: string) {
+    const normalizedSearch = search.trim();
+
+    if (!normalizedSearch) {
+      return [];
+    }
+
+    const matchedCategories = await this.prisma.category.findMany({
+      where: {
+        isActive: true,
+        products: {
+          some: {
+            isActive: true,
+            OR: [
+              { name: { contains: normalizedSearch, mode: 'insensitive' } },
+              { slug: { contains: normalizedSearch, mode: 'insensitive' } },
+              {
+                translations: {
+                  some: {
+                    locale,
+                    OR: [
+                      {
+                        name: {
+                          contains: normalizedSearch,
+                          mode: 'insensitive',
+                        },
+                      },
+                      {
+                        slug: {
+                          contains: normalizedSearch,
+                          mode: 'insensitive',
+                        },
+                      },
+                    ],
                   },
                 },
               },
-              children: {
-                where: { isActive: true },
-                include: {
-                  translations: locale ? { where: { locale } } : true,
-                  _count: { select: { products: true } },
-                },
-              },
-              translations: locale ? { where: { locale } } : true,
-              _count: { select: { products: true } },
-            },
+            ],
           },
+        },
+      },
+      select: {
+        id: true,
+        parentId: true,
+      },
+    });
+
+    if (!matchedCategories.length) {
+      return [];
+    }
+
+    const categoryById = new Map<
+      string,
+      {
+        id: string;
+        parentId: string | null;
+      }
+    >();
+
+    matchedCategories.forEach((category) => {
+      categoryById.set(category.id, category);
+    });
+
+    let unresolvedParentIds = new Set(
+      matchedCategories
+        .map((category) => category.parentId)
+        .filter((parentId): parentId is string => Boolean(parentId)),
+    );
+
+    while (unresolvedParentIds.size > 0) {
+      const idsToLoad = Array.from(unresolvedParentIds).filter(
+        (id) => !categoryById.has(id),
+      );
+
+      if (!idsToLoad.length) {
+        break;
+      }
+
+      const parents = await this.prisma.category.findMany({
+        where: {
+          id: { in: idsToLoad },
+          isActive: true,
+        },
+        select: {
+          id: true,
+          parentId: true,
         },
       });
 
-      category = translation?.category ?? null;
+      unresolvedParentIds = new Set<string>();
+
+      parents.forEach((parent) => {
+        categoryById.set(parent.id, parent);
+        if (parent.parentId) {
+          unresolvedParentIds.add(parent.parentId);
+        }
+      });
     }
 
-    if (!category) {
-      throw new NotFoundException('Category not found');
+    const topLevelIds = new Set<string>();
+
+    matchedCategories.forEach((category) => {
+      let current = categoryById.get(category.id);
+      while (current?.parentId) {
+        const parent = categoryById.get(current.parentId);
+        if (!parent) break;
+        current = parent;
+      }
+
+      if (current && !current.parentId) {
+        topLevelIds.add(current.id);
+      }
+    });
+
+    if (!topLevelIds.size) {
+      return [];
     }
 
-    const breadcrumbs = await this.getBreadcrumbs(category.id, locale);
+    const topLevelCategories = await this.prisma.category.findMany({
+      where: {
+        id: { in: Array.from(topLevelIds) },
+        parentId: null,
+        isActive: true,
+      },
+      include: this.getIncludeWithTranslations(locale),
+      orderBy: {
+        name: 'asc',
+      },
+    });
 
-    const transformedCategory = this.transformCategoryWithTranslation(
-      { ...category },
-      locale,
+    return topLevelCategories.map((cat) =>
+      this.transformCategoryWithTranslation(cat, locale),
     );
+  }
 
-    let items: any = [];
-    let parentCategory = null;
-    let isShowingSubcategories = false;
+  async getCategoryNavigation(
+    slug?: string,
+    locale: string = 'en',
+    search?: string,
+  ) {
+    const normalizedSearch = search?.trim();
 
-    if (category.parent) {
-      parentCategory = this.transformCategoryWithTranslation(
-        { ...category.parent },
+    if (normalizedSearch) {
+      const items = await this.getTopLevelCategoriesBySearch(
+        normalizedSearch,
         locale,
       );
-      items = category.parent.children.map((child) =>
-        this.transformCategoryWithTranslation(child, locale),
+
+      return {
+        currentCategory: null,
+        parentCategory: null,
+        items,
+        isShowingSubcategories: false,
+        breadcrumbs: [],
+      };
+    }
+
+    if (slug) {
+      const category = await this.findActiveCategoryBySlugWithParent(
+        slug,
+        locale,
       );
-      isShowingSubcategories = true;
-    } else if (category.children && category.children.length > 0) {
-      items = category.children.map((child) =>
-        this.transformCategoryWithTranslation(child, locale),
-      );
-      isShowingSubcategories = true;
-    } else {
-      const topCategories = await this.prisma.category.findMany({
+
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+
+      const children = await this.prisma.category.findMany({
         where: {
-          parentId: null,
+          parentId: category.id,
           isActive: true,
         },
         include: this.getIncludeWithTranslations(locale),
+        orderBy: {
+          name: 'asc',
+        },
       });
 
-      items = topCategories.map((cat) =>
-        this.transformCategoryWithTranslation(cat, locale),
-      );
-      isShowingSubcategories = false;
+      const breadcrumbs = await this.getBreadcrumbs(category.id, locale);
+
+      return {
+        currentCategory: this.transformCategoryWithTranslation(
+          { ...category },
+          locale,
+        ),
+        parentCategory: category.parent
+          ? this.transformCategoryWithTranslation({ ...category.parent }, locale)
+          : null,
+        items: children.map((child) =>
+          this.transformCategoryWithTranslation(child, locale),
+        ),
+        isShowingSubcategories: true,
+        breadcrumbs,
+      };
     }
 
+    const items = await this.getTopLevelCategories(locale);
+
     return {
-      currentCategory: transformedCategory,
-      parentCategory,
+      currentCategory: null,
+      parentCategory: null,
       items,
-      isShowingSubcategories,
-      breadcrumbs,
+      isShowingSubcategories: false,
+      breadcrumbs: [],
     };
   }
 }
+

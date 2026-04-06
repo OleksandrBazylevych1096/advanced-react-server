@@ -14,34 +14,70 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String?   @unique
-  phone        String?   @unique
-  password     String?   
-  googleId     String?   @unique
-  provider     AuthProvider @default(LOCAL)
-  isVerified   Boolean   @default(false)
-  verifiedAt   DateTime?
-  firstName    String?
-  lastName     String?
-  avatar       String?
-  address      String?
-  city         String?
-  country      String?
-  postalCode   String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt @default(now())
-    
-  verificationCodes VerificationCode[]
-  refreshTokens     RefreshToken[]
-  cartItems         CartItem[]
-  orders            Order[]
-  reviews           Review[]
-  favoriteProducts  FavoriteProduct[]
-  shippingAddresses ShippingAddress[]
+  id                        String           @id @default(cuid())
+  email                     String?          @unique
+  phone                     String?          @unique
+  password                  String? // legacy
+  passwordHash              String?
+  googleId                  String?          @unique
+  googleEmail               String?
+  provider                  AuthProvider     @default(LOCAL)
+  isVerified                Boolean          @default(false) // legacy
+  isEmailVerified           Boolean          @default(false)
+  isPhoneVerified           Boolean          @default(false)
+  emailNotificationsEnabled Boolean          @default(true)
+  isTwoFactorEnabled        Boolean          @default(false)
+  twoFactorSecret           String?
+  twoFactorMethod           TwoFactorMethod?
+  lockedUntil               DateTime?
+  verifiedAt                DateTime?
+  firstName                 String?
+  lastName                  String?
+  avatar                    String?
+  address                   String?
+  city                      String?
+  country                   String?
+  postalCode                String?
+  createdAt                 DateTime         @default(now())
+  updatedAt                 DateTime         @default(now()) @updatedAt
 
-   
+  verificationCodes   VerificationCode[]
+  refreshTokens       RefreshToken[]
+  roles               UserRole[]
+  sessions            Session[]
+  oauthProviders      OauthProvider[]
+  passwordResetTokens PasswordResetToken[]
+  verificationTokens  VerificationToken[]
+  otpCodes            OtpCode[]
+  backupCodes         BackupCode[]
+  authEvents          AuthEvent[]
+  cartItems           CartItem[]
+  deliverySelection   DeliverySelection?
+  orders              Order[]
+  reviews             Review[]
+  favoriteProducts    FavoriteProduct[]
+  shippingAddresses   ShippingAddress[]
+  checkoutSessions    CheckoutSession[]
+  searchHistory       SearchHistory[]
+
   @@map("users")
+}
+
+model SearchHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  query           String
+  queryNormalized String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, queryNormalized])
+  @@index([userId, updatedAt])
+  @@index([updatedAt])
+  @@index([queryNormalized])
+  @@map("search_history")
 }
 
 enum AuthProvider {
@@ -49,18 +85,74 @@ enum AuthProvider {
   GOOGLE
 }
 
+enum TwoFactorMethod {
+  TOTP
+  OTP_EMAIL
+  OTP_SMS
+}
+
+enum RoleName {
+  USER
+  MODERATOR
+  ADMIN
+  SUPERADMIN
+}
+
+enum OauthProviderName {
+  GOOGLE
+}
+
+enum OtpChannel {
+  SMS
+  EMAIL
+}
+
+enum OtpPurpose {
+  REGISTRATION_PHONE_VERIFY
+  REGISTRATION_EMAIL_VERIFY
+  LOGIN_2FA
+  TWO_FACTOR_SETUP
+  PASSWORD_RESET
+  PHONE_VERIFY
+}
+
+enum AuthEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILURE
+  ACCOUNT_LOCKED
+  LOGOUT
+  SESSION_CREATED
+  SESSION_REVOKED
+  SESSIONS_REVOKED_ALL
+  REFRESH_SUCCESS
+  REFRESH_REUSE_DETECTED
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_RESET_COMPLETED
+  EMAIL_VERIFIED
+  OTP_SENT
+  OTP_VERIFIED
+  OTP_FAILED
+  TWO_FACTOR_SETUP
+  TWO_FACTOR_ENABLED
+  TWO_FACTOR_DISABLED
+  TWO_FACTOR_VERIFIED
+  GOOGLE_LINKED
+  GOOGLE_UNLINKED
+  GOOGLE_MERGED
+}
+
 model ShippingAddress {
-  id                 String   @id @default(cuid())
-  userId             String
-  streetAddress      String
-  city               String
-  numberOfApartment  String
-  zipCode            String
-  latitude           Float?   
-  longitude         Float?   
-  isDefault          Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  id                String   @id @default(cuid())
+  userId            String
+  streetAddress     String
+  city              String
+  numberOfApartment String
+  zipCode           String
+  latitude          Float?
+  longitude         Float?
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -68,16 +160,16 @@ model ShippingAddress {
 }
 
 model VerificationCode {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   userId    String
-  code      String 
+  code      String
   type      VerificationType
   expiresAt DateTime
-  isUsed    Boolean  @default(false)
-  createdAt DateTime @default(now())
-   
+  isUsed    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-   
+
   @@map("verification_codes")
 }
 
@@ -87,13 +179,13 @@ enum VerificationType {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  userId    String
-  jti       String   @unique
-  tokenHash String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  revokedAt DateTime?
+  id                String    @id @default(cuid())
+  userId            String
+  jti               String    @unique
+  tokenHash         String
+  expiresAt         DateTime
+  createdAt         DateTime  @default(now())
+  revokedAt         DateTime?
   replacedByTokenId String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -101,27 +193,160 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
+model Role {
+  id          String     @id @default(cuid())
+  name        RoleName   @unique
+  description String?
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId String
+  roleId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String
+  tokenFamilyId    String?
+  deviceInfo       Json?
+  ip               String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  lastActivity     DateTime  @default(now())
+  isActive         Boolean   @default(true)
+  revokedAt        DateTime?
+  revokedReason    String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+  @@map("sessions")
+}
+
+model OauthProvider {
+  id             String            @id @default(cuid())
+  userId         String
+  provider       OauthProviderName
+  providerUserId String
+  providerEmail  String?
+  accessToken    String?
+  refreshToken   String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId, provider])
+  @@map("oauth_providers")
+}
+
+model VerificationToken {
+  id        String    @id @default(cuid())
+  userId    String
+  purpose   String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+model OtpCode {
+  id                     String     @id @default(cuid())
+  userId                 String
+  channel                OtpChannel
+  purpose                OtpPurpose
+  codeHash               String
+  attempts               Int        @default(0)
+  maxAttempts            Int        @default(3)
+  expiresAt              DateTime
+  usedAt                 DateTime?
+  blockedAt              DateTime?
+  deliveryTargetSnapshot String?
+  createdAt              DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, channel])
+  @@map("otp_codes")
+}
+
+model BackupCode {
+  id        String    @id @default(cuid())
+  userId    String
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("backup_codes")
+}
+
+model AuthEvent {
+  id        String        @id @default(cuid())
+  userId    String?
+  type      AuthEventType
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+  @@map("auth_events")
+}
 
 model Category {
-  id          String    @id @default(cuid())
-  name        String    @unique // Fallback
-  description String?   // Fallback
-  slug        String    @unique // Fallback
+  id          String   @id @default(cuid())
+  name        String   @unique // Fallback
+  description String? // Fallback
+  slug        String   @unique // Fallback
   image       String?
   icon        String?
   parentId    String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt 
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  parent       Category?  @relation("CategoryParent", fields: [parentId], references: [id])
-  children     Category[] @relation("CategoryParent")
-  products     Product[]  @relation("ProductCategories")
+  parent       Category?             @relation("CategoryParent", fields: [parentId], references: [id])
+  children     Category[]            @relation("CategoryParent")
+  products     Product[]             @relation("ProductCategories")
   translations CategoryTranslation[] // Додайте це поле
 
   @@map("categories")
 }
-
 
 model CategoryTranslation {
   id          String   @id @default(cuid())
@@ -140,24 +365,23 @@ model CategoryTranslation {
   @@map("category_translations")
 }
 
-
 model Product {
-  id              String     @id @default(uuid())
-  name            String     // Залишаємо як fallback
-  slug            String     @unique // Залишаємо як fallback
-  shortDescription String?   // Залишаємо як fallback
-  description     String?    // Залишаємо як fallback
-  price           Decimal    @db.Decimal(10,2)
-  oldPrice        Decimal?   @db.Decimal(10,2)
-  stock           Int        @default(0)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  isActive        Boolean    @default(true)
-  brand       String?    
-  country     String?   
+  id               String   @id @default(uuid())
+  name             String // Залишаємо як fallback
+  slug             String   @unique // Залишаємо як fallback
+  shortDescription String? // Залишаємо як fallback
+  description      String? // Залишаємо як fallback
+  price            Decimal  @db.Decimal(10, 2)
+  oldPrice         Decimal? @db.Decimal(10, 2)
+  stock            Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  isActive         Boolean  @default(true)
+  brand            String?
+  country          String?
 
-  categories       Category[]  @relation("ProductCategories")
-  tags             Tag[]       @relation("ProductTags")
+  categories       Category[]           @relation("ProductCategories")
+  tags             Tag[]                @relation("ProductTags")
   images           ProductImage[]
   reviews          Review[]
   cartItems        CartItem[]
@@ -171,7 +395,7 @@ model Product {
 model ProductTranslation {
   id               String   @id @default(cuid())
   productId        String
-  locale           String   
+  locale           String
   name             String
   shortDescription String?
   description      String?
@@ -200,10 +424,10 @@ model ProductImage {
 }
 
 model CartItem {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
   productId String
-  quantity  Int    @default(1)
+  quantity  Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -214,47 +438,78 @@ model CartItem {
   @@map("cart_items")
 }
 
-model Order {
-  id              String      @id @default(cuid())
-  userId          String
-  orderNumber     String      @unique
-  status          OrderStatus @default(PENDING)
-  totalAmount     Decimal     @db.Decimal(10, 2)
-  shippingAmount  Decimal     @db.Decimal(10, 2) @default(0)
-  taxAmount       Decimal     @db.Decimal(10, 2) @default(0)
-  discountAmount  Decimal     @db.Decimal(10, 2) @default(0)
-  
-  // Shipping information
-  shippingAddress String
-  shippingCity    String
-  shippingCountry String
-  shippingPostal  String
-  
-  // Billing information
-  billingAddress  String?
-  billingCity     String?
-  billingCountry  String?
-  billingPostal   String?
-  
-  paymentMethod   String?
-  paymentStatus   PaymentStatus @default(PENDING)
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+model DeliverySelection {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  deliveryDate DateTime
+  deliveryTime String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id])
-  orderItems OrderItem[]
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("cart_delivery_selection")
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String
+  orderNumber    String      @unique
+  status         OrderStatus @default(PENDING)
+  totalAmount    Decimal     @db.Decimal(10, 2)
+  shippingAmount Decimal     @default(0) @db.Decimal(10, 2)
+  taxAmount      Decimal     @default(0) @db.Decimal(10, 2)
+  discountAmount Decimal     @default(0) @db.Decimal(10, 2)
+  tipAmount      Decimal     @default(0) @db.Decimal(10, 2)
+  couponCode     String?
+  currency       String      @default("usd")
+
+  // Shipping information
+  shippingAddress           String
+  shippingCity              String
+  shippingCountry           String
+  shippingPostal            String
+  shippingNumberOfApartment String?
+
+  // Billing information
+  billingAddress String?
+  billingCity    String?
+  billingCountry String?
+  billingPostal  String?
+
+  paymentMethod         String?
+  paymentCardBrand      String?
+  paymentCardLast4      String?
+  paymentStatus         PaymentStatus @default(PENDING)
+  stripePaymentIntentId String?       @unique
+  cancelledFromStatus   OrderStatus?
+  cancelledAt           DateTime?
+  refundedAt            DateTime?
+
+  deliveryDate DateTime?
+  deliveryTime String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user            User                 @relation(fields: [userId], references: [id])
+  orderItems      OrderItem[]
+  checkoutSession CheckoutSession?
+  statusHistory   OrderStatusHistory[]
 
   @@map("orders")
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  productId String
-  quantity  Int
-  price     Decimal @db.Decimal(10, 2)
-  total     Decimal @db.Decimal(10, 2)
+  id           String  @id @default(cuid())
+  orderId      String
+  productId    String
+  quantity     Int
+  price        Decimal @db.Decimal(10, 2)
+  total        Decimal @db.Decimal(10, 2)
+  productName  String?
+  productImage String?
+  productSlug  String?
 
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id])
@@ -263,15 +518,15 @@ model OrderItem {
 }
 
 model Review {
-  id        String   @id @default(cuid())
-  userId    String
-  productId String
-  rating    Int      // 1-5 stars
-  title     String?
-  comment   String?
-  isVerified Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  productId  String
+  rating     Int // 1-5 stars
+  title      String?
+  comment    String?
+  isVerified Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -303,6 +558,19 @@ enum OrderStatus {
   REFUNDED
 }
 
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  status    OrderStatus
+  note      String?
+  createdAt DateTime    @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
 enum PaymentStatus {
   PENDING
   PAID
@@ -310,6 +578,59 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum CheckoutSessionStatus {
+  pending_payment
+  paid
+  payment_failed
+  expired
+  cancelled
+}
+
+model CheckoutSession {
+  id                   String                @id @default(cuid())
+  userId               String
+  cartHash             String
+  amount               Decimal               @db.Decimal(10, 2)
+  currency             String
+  paymentIntentId      String                @unique
+  status               CheckoutSessionStatus @default(pending_payment)
+  shippingAmount       Decimal               @default(0) @db.Decimal(10, 2)
+  taxAmount            Decimal               @default(0) @db.Decimal(10, 2)
+  discountAmount       Decimal               @default(0) @db.Decimal(10, 2)
+  tipAmount            Decimal               @default(0) @db.Decimal(10, 2)
+  couponCode           String?
+  snapshot             Json
+  orderId              String?               @unique
+  expiresAt            DateTime
+  paidAt               DateTime?
+  lastPaymentError     String?
+  lastPaymentAttemptAt DateTime?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  user   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order  Order?                 @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  events CheckoutSessionEvent[]
+
+  @@index([userId, cartHash, status, expiresAt])
+  @@index([status, expiresAt])
+  @@map("checkout_sessions")
+}
+
+model CheckoutSessionEvent {
+  id         String                 @id @default(cuid())
+  sessionId  String
+  fromStatus CheckoutSessionStatus?
+  toStatus   CheckoutSessionStatus
+  reason     String?
+  metadata   Json?
+  createdAt  DateTime               @default(now())
+
+  session CheckoutSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("checkout_session_events")
+}
 
 model TagTranslation {
   id          String   @id @default(cuid())
@@ -327,30 +648,57 @@ model TagTranslation {
 }
 
 model Tag {
-  id          String    @id @default(cuid())
-  name        String    @unique // Fallback
-  slug        String    @unique
-  description String?   // Fallback
+  id          String   @id @default(cuid())
+  name        String   @unique // Fallback
+  slug        String   @unique
+  description String? // Fallback
   color       String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  products     Product[] @relation("ProductTags")
+  products     Product[]        @relation("ProductTags")
   translations TagTranslation[] // Додайте це поле
 
   @@map("tags")
 }
 
 model PromoBanner {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   imageUrl    String
   title       String?
   description String?
   link        String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("promo_banners")
+}
+
+model Country {
+  id        String   @id @default(cuid())
+  code      String   @unique // ISO код країни (наприклад, "USA", "UA")
+  name      String // Назва за замовчуванням (fallback)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  translations CountryTranslation[]
+
+  @@map("countries")
+}
+
+model CountryTranslation {
+  id        String   @id @default(cuid())
+  countryId String
+  locale    String // Код мови ("en", "uk")
+  name      String // Локалізована назва
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+
+  @@unique([countryId, locale])
+  @@map("country_translations")
 }

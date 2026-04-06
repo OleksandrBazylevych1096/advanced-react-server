@@ -12,7 +12,12 @@ import { Transform } from 'class-transformer';
 export class ProductQueryDto {
   @IsOptional()
   @IsString()
-  search?: string;
+  @Transform(({ value }) =>
+    typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : undefined,
+  )
+  q?: string;
 
   @IsOptional()
   @IsArray()
@@ -46,8 +51,12 @@ export class ProductQueryDto {
   inStock?: boolean;
 
   @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
+  @IsString()
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value[0];
+    return String(value).trim();
+  })
   categoryId?: string;
 
   @IsOptional()

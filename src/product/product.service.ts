@@ -218,7 +218,7 @@ export class ProductService {
 
   async findAll(query: ProductQueryI18nDto) {
     const {
-      search,
+      q,
       categoryId,
       categorySlug,
       tagId,
@@ -279,18 +279,18 @@ export class ProductService {
           }
         : {},
 
-      search
+      q
         ? {
             OR: [
-              { name: { contains: search, mode: 'insensitive' } },
-              { slug: { contains: search, mode: 'insensitive' } },
+              { name: { contains: q, mode: 'insensitive' } },
+              { slug: { contains: q, mode: 'insensitive' } },
               {
                 translations: {
                   some: {
                     locale,
                     OR: [
-                      { name: { contains: search, mode: 'insensitive' } },
-                      { slug: { contains: search, mode: 'insensitive' } },
+                      { name: { contains: q, mode: 'insensitive' } },
+                      { slug: { contains: q, mode: 'insensitive' } },
                     ],
                   },
                 },
@@ -400,6 +400,33 @@ export class ProductService {
       }),
     ]);
 
+    const countryCodes = countryFacetRaw
+      .map((countryGroup) => countryGroup.country)
+      .filter((code): code is string => Boolean(code));
+
+    const countryEntities = countryCodes.length
+      ? await this.prisma.country.findMany({
+          where: {
+            code: {
+              in: countryCodes,
+            },
+          },
+          include: {
+            translations: {
+              where: { locale },
+              take: 1,
+            },
+          },
+        })
+      : [];
+
+    const countryLabelByCode = new Map(
+      countryEntities.map((country) => [
+        country.code,
+        country.translations?.[0]?.name || country.name || country.code,
+      ]),
+    );
+
     // =====================================================================
     // 7. TRANSFORM PRODUCTS (i18n + currency)
     // =====================================================================
@@ -459,6 +486,7 @@ export class ProductService {
         })),
         countries: countryFacetRaw.map((c) => ({
           value: c.country,
+          label: countryLabelByCode.get(c.country ?? '') ?? c.country,
           count: c._count._all,
         })),
         inStock: inStockCount,

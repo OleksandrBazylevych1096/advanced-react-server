@@ -18,6 +18,9 @@ import { FavoriteModule } from './favorite/favorite.module';
 import { TagModule } from './tag/tag.module';
 import { ExchangeRateModule } from './exchange-rate/exchange-rate.module';
 import { ShippingAddressModule } from './shipping-address/shipping-address.module';
+import { CheckoutModule } from './checkout/checkout.module';
+import { DeliverySelectionModule } from './delivery-selection/delivery-selection.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
@@ -38,6 +41,9 @@ import { ShippingAddressModule } from './shipping-address/shipping-address.modul
     PromoBannerModule,
     ExchangeRateModule,
     ShippingAddressModule,
+    CheckoutModule,
+    DeliverySelectionModule,
+    RedisModule,
   ],
   controllers: [AppController],
   providers: [AppService],

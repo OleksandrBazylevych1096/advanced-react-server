@@ -18,6 +18,28 @@ export class EmailService {
     });
   }
 
+  async sendOrderConfirmation(to: string, payload: any): Promise<void> {
+    const mailOptions = {
+      from: this.configService.get('SMTP_FROM'),
+      to,
+      subject: `Order Confirmation - ${payload.orderNumber}`,
+      text: `Your order ${payload.orderNumber} has been confirmed. Total: ${payload.total} ${payload.currency}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2>Order Confirmation</h2>
+          <p>Your order <strong>${payload.orderNumber}</strong> has been successfully confirmed.</p>
+          <p>Total: ${payload.total} ${payload.currency}</p>
+        </div>
+      `,
+    };
+
+    try {
+      await this.transporter.sendMail(mailOptions);
+    } catch (error) {
+      console.error('Failed to send order confirmation email:', error);
+    }
+  }
+
   async sendVerificationCode(to: string, code: string): Promise<void> {
     const mailOptions = {
       from: this.configService.get('SMTP_FROM'),

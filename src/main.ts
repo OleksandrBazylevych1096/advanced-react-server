@@ -19,8 +19,22 @@ async function bootstrap() {
   app.use(cookieParser());
   app.use('/static', express.static(join(__dirname, '..', 'static')));
 
+  if ((process.env.TRUST_PROXY || '').toLowerCase() === 'true') {
+    (app as any).set('trust proxy', 1);
+  }
+
+  const corsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: process.env.FRONTEND_URL || true,
+    origin: corsOrigins.length
+      ? (origin, cb) => {
+          if (!origin || corsOrigins.includes(origin)) return cb(null, true);
+          return cb(new Error('Not allowed by CORS'), false);
+        }
+      : true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

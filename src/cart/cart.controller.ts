@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { CartService } from './cart.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
@@ -19,14 +20,36 @@ import { GetUserId } from '../decorators/get-user-id.decorator';
 export class CartController {
   constructor(private readonly cartService: CartService) {}
 
+  private resolveCurrency(currency?: string) {
+    return currency || 'USD';
+  }
+
   @Post('add')
-  addToCart(@GetUserId() userId: string, @Body() addToCartDto: AddToCartDto) {
-    return this.cartService.addToCart(userId, addToCartDto);
+  addToCart(
+    @GetUserId() userId: string,
+    @Body() addToCartDto: AddToCartDto,
+    @Query('locale') locale?: string,
+    @Query('currency') currency?: string,
+  ) {
+    return this.cartService.addToCart(
+      userId,
+      addToCartDto,
+      locale || 'en',
+      this.resolveCurrency(currency),
+    );
   }
 
   @Get()
-  getCart(@GetUserId() userId: string) {
-    return this.cartService.getCart(userId);
+  getCart(
+    @GetUserId() userId: string,
+    @Query('locale') locale?: string,
+    @Query('currency') currency?: string,
+  ) {
+    return this.cartService.getCart(
+      userId,
+      locale || 'en',
+      this.resolveCurrency(currency),
+    );
   }
 
   @Get('count')
@@ -35,8 +58,11 @@ export class CartController {
   }
 
   @Get('validate')
-  validateCartItems(@GetUserId() userId: string) {
-    return this.cartService.validateCartItems(userId);
+  validateCartItems(
+    @GetUserId() userId: string,
+    @Query('locale') locale?: string,
+  ) {
+    return this.cartService.validateCartItems(userId, locale || 'en');
   }
 
   @Patch('item/:productId')
@@ -69,7 +95,14 @@ export class CartController {
   syncCart(
     @GetUserId() userId: string,
     @Body('guestCartItems') guestCartItems: any[],
+    @Query('locale') locale?: string,
+    @Query('currency') currency?: string,
   ) {
-    return this.cartService.syncCartAfterLogin(guestCartItems, userId);
+    return this.cartService.syncCartAfterLogin(
+      guestCartItems,
+      userId,
+      locale || 'en',
+      this.resolveCurrency(currency),
+    );
   }
 }

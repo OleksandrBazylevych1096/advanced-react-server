@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -9,12 +10,16 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrderQueryDto } from './dto/order-query.dto';
 import { CartService } from '../cart/cart.service';
 import { Prisma } from '@prisma/client';
+import { StripeService } from './stripe.service';
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(
     private prisma: PrismaService,
     private cartService: CartService,
+    private stripeService: StripeService,
   ) {}
 
   async create(userId: string, createOrderDto: CreateOrderDto) {
@@ -123,7 +128,7 @@ export class OrderService {
     return order;
   }
 
-  async findAll(query: OrderQueryDto, userId?: string) {
+  async findAll(query: OrderQueryDto, userId?: string, locale: string = 'en') {
     const {
       status,
       paymentStatus,
@@ -137,7 +142,7 @@ export class OrderService {
     const where: Prisma.OrderWhereInput = {
       AND: [
         userId ? { userId } : {},
-        status ? { status } : {},
+        status?.length ? { status: { in: status } } : {},
         paymentStatus ? { paymentStatus } : {},
         orderNumber
           ? { orderNumber: { contains: orderNumber, mode: 'insensitive' } }
@@ -163,9 +168,17 @@ export class OrderService {
               product: {
                 include: {
                   images: true,
+                  translations: locale
+                    ? {
+                        where: { locale },
+                      }
+                    : true,
                 },
               },
             },
+          },
+          statusHistory: {
+            orderBy: { createdAt: 'asc' },
           },
           user: {
             select: {
@@ -183,7 +196,7 @@ export class OrderService {
     const totalPages = Math.ceil(total / limit);
 
     return {
-      orders,
+      orders: orders.map((order) => this.normalizeOrderForFrontend(order, locale)),
       pagination: {
         page,
         limit,
@@ -195,7 +208,7 @@ export class OrderService {
     };
   }
 
-  async findOne(id: string, userId?: string) {
+  async findOne(id: string, userId?: string, locale: string = 'en') {
     const where: Prisma.OrderWhereInput = {
       id,
       ...(userId && { userId }),
@@ -206,13 +219,21 @@ export class OrderService {
       include: {
         orderItems: {
           include: {
-            product: {
-              include: {
-                images: true,
-                categories: true,
+              product: {
+                include: {
+                  images: true,
+                  categories: true,
+                  translations: locale
+                    ? {
+                        where: { locale },
+                      }
+                    : true,
+                },
               },
             },
           },
+        statusHistory: {
+          orderBy: { createdAt: 'asc' },
         },
         user: {
           select: {
@@ -230,10 +251,88 @@ export class OrderService {
       throw new NotFoundException('Order not found');
     }
 
-    return order;
+    if (
+      order.stripePaymentIntentId &&
+      (order.paymentStatus !== 'REFUNDED' || order.status !== 'REFUNDED')
+    ) {
+      try {
+        const paymentIntent = await this.stripeService.retrievePaymentIntent(
+          order.stripePaymentIntentId,
+          { expand: ['latest_charge'] },
+        );
+
+        const latestCharge =
+          paymentIntent.latest_charge &&
+          typeof paymentIntent.latest_charge !== 'string'
+            ? paymentIntent.latest_charge
+            : null;
+        const shouldMarkRefunded =
+          Boolean(latestCharge?.refunded) ||
+          Number(latestCharge?.amount_refunded ?? 0) > 0;
+        const shouldSyncPaymentStatus = order.paymentStatus === 'PENDING';
+        const shouldMarkPaid =
+          shouldSyncPaymentStatus && paymentIntent.status === 'succeeded';
+        const shouldMarkFailed =
+          shouldSyncPaymentStatus &&
+          (paymentIntent.status === 'canceled' ||
+            paymentIntent.status === 'requires_payment_method');
+        let hasSyncedOrder = false;
+
+        if (shouldMarkRefunded) {
+          await this.prisma.$transaction(async (tx) => {
+            await tx.order.update({
+              where: { id: order.id },
+              data: {
+                paymentStatus: 'REFUNDED',
+                status: 'REFUNDED',
+                refundedAt: order.refundedAt ?? new Date(),
+                cancelledFromStatus: order.cancelledFromStatus ?? order.status,
+              },
+            });
+
+            const hasRefundHistory = order.statusHistory.some(
+              (entry) => entry.status === 'REFUNDED',
+            );
+            if (!hasRefundHistory) {
+              await tx.orderStatusHistory.create({
+                data: {
+                  orderId: order.id,
+                  status: 'REFUNDED',
+                  note: 'Refund synced from Stripe',
+                },
+              });
+            }
+          });
+          hasSyncedOrder = true;
+        } else if (shouldMarkPaid || shouldMarkFailed) {
+          await this.prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: shouldMarkPaid ? 'PAID' : 'FAILED',
+              status: shouldMarkPaid ? 'CONFIRMED' : order.status,
+            },
+          });
+          hasSyncedOrder = true;
+        }
+
+        if (hasSyncedOrder) {
+          return this.findOne(id, userId, locale);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Stripe sync fallback failed for order ${order.id}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    return this.normalizeOrderForFrontend(order, locale);
   }
 
-  async findByOrderNumber(orderNumber: string, userId?: string) {
+  async findByOrderNumber(
+    orderNumber: string,
+    userId?: string,
+    locale: string = 'en',
+  ) {
     const where: Prisma.OrderWhereInput = {
       orderNumber,
       ...(userId && { userId }),
@@ -244,13 +343,21 @@ export class OrderService {
       include: {
         orderItems: {
           include: {
-            product: {
-              include: {
-                images: true,
-                categories: true,
+              product: {
+                include: {
+                  images: true,
+                  categories: true,
+                  translations: locale
+                    ? {
+                        where: { locale },
+                      }
+                    : true,
+                },
               },
             },
           },
+        statusHistory: {
+          orderBy: { createdAt: 'asc' },
         },
         user: {
           select: {
@@ -268,7 +375,59 @@ export class OrderService {
       throw new NotFoundException('Order not found');
     }
 
-    return order;
+    return this.normalizeOrderForFrontend(order, locale);
+  }
+
+  async cancelOrder(id: string, userId: string, locale: string = 'en') {
+    const order = await this.prisma.order.findFirst({
+      where: { id, userId },
+      include: { orderItems: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.status === 'CANCELLED') {
+      return this.findOne(id, userId, locale);
+    }
+
+    if (order.status === 'DELIVERED' || order.status === 'REFUNDED') {
+      throw new BadRequestException('Order cannot be cancelled');
+    }
+
+    if (order.stripePaymentIntentId && order.paymentStatus === 'PAID') {
+      try {
+        await this.stripeService.refundPaymentIntent(order.stripePaymentIntentId);
+      } catch (error) {
+        this.logger.error(
+          `Failed to refund payment intent ${order.stripePaymentIntentId}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id },
+        data: {
+          cancelledFromStatus: order.status,
+          cancelledAt: new Date(),
+          status: 'CANCELLED',
+          refundedAt: order.paymentStatus === 'PAID' ? new Date() : null,
+          paymentStatus:
+            order.paymentStatus === 'PAID' ? 'REFUNDED' : order.paymentStatus,
+        },
+      });
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: id,
+          status: 'CANCELLED',
+          note: `Cancelled from ${order.status}`,
+        },
+      });
+    });
+
+    return this.findOne(id, userId, locale);
   }
 
   async update(id: string, updateOrderDto: UpdateOrderDto) {
@@ -280,33 +439,48 @@ export class OrderService {
       throw new NotFoundException('Order not found');
     }
 
-    return this.prisma.order.update({
-      where: { id },
-      data: updateOrderDto,
-      include: {
-        orderItems: {
-          include: {
-            product: {
-              include: {
-                images: true,
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.order.update({
+        where: { id },
+        data: updateOrderDto,
+        include: {
+          orderItems: {
+            include: {
+              product: {
+                include: {
+                  images: true,
+                },
               },
             },
           },
-        },
-        user: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
+          statusHistory: {
+            orderBy: { createdAt: 'asc' },
+          },
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
           },
         },
-      },
+      });
+
+      if (updateOrderDto.status) {
+        await tx.orderStatusHistory.create({
+          data: { orderId: id, status: updateOrderDto.status },
+        });
+      }
+
+      return result;
     });
+
+    return this.normalizeOrderForFrontend(updatedOrder, 'en');
   }
 
-  async getUserOrders(userId: string, query: OrderQueryDto) {
-    return this.findAll(query, userId);
+  async getUserOrders(userId: string, query: OrderQueryDto, locale: string = 'en') {
+    return this.findAll(query, userId, locale);
   }
 
   async getOrderStats(userId?: string) {
@@ -342,6 +516,179 @@ export class OrderService {
       cancelledOrders,
       totalRevenue: totalRevenue._sum.totalAmount || 0,
     };
+  }
+
+  private normalizeOrderForFrontend(order: any, locale: string) {
+    const {
+      shippingAddress,
+      shippingCity,
+      shippingPostal,
+      shippingNumberOfApartment,
+      statusHistory: _statusHistory,
+      orderItems,
+      ...rest
+    } = order;
+
+    const localizedItems = (orderItems || []).map((item: any) => ({
+      ...item,
+      price: Number(item.price ?? 0),
+      total: Number(item.total ?? 0),
+      product: this.localizeOrderProduct(item.product, locale),
+    }));
+
+    const subtotalAmount =
+      Number(order.totalAmount ?? 0) -
+      Number(order.shippingAmount ?? 0) -
+      Number(order.taxAmount ?? 0) -
+      Number(order.tipAmount ?? 0) +
+      Number(order.discountAmount ?? 0);
+
+    return {
+      ...rest,
+      totalAmount: Number(order.totalAmount ?? 0),
+      shippingAmount: Number(order.shippingAmount ?? 0),
+      taxAmount: Number(order.taxAmount ?? 0),
+      discountAmount: Number(order.discountAmount ?? 0),
+      tipAmount: Number(order.tipAmount ?? 0),
+      subtotalAmount,
+      shippingAddress: {
+        streetAddress: shippingAddress,
+        city: shippingCity,
+        zipCode: shippingPostal,
+        numberOfApartment: shippingNumberOfApartment ?? null,
+      },
+      orderItems: localizedItems,
+      timeline: this.buildOrderTimeline(order),
+    };
+  }
+
+  private localizeOrderProduct(product: any, locale: string) {
+    if (!product) return product;
+
+    const translation =
+      product.translations?.find((t: any) => t.locale === locale) ||
+      product.translations?.[0];
+
+    if (!translation) {
+      return {
+        ...product,
+        price: Number(product.price ?? 0),
+        oldPrice:
+          product.oldPrice !== null && product.oldPrice !== undefined
+            ? Number(product.oldPrice)
+            : undefined,
+        translations: undefined,
+      };
+    }
+
+    return {
+      ...product,
+      name: translation.name,
+      slug: translation.slug,
+      shortDescription: translation.shortDescription,
+      description: translation.description,
+      price: Number(product.price ?? 0),
+      oldPrice:
+        product.oldPrice !== null && product.oldPrice !== undefined
+          ? Number(product.oldPrice)
+          : undefined,
+      translations: undefined,
+    };
+  }
+
+  private buildOrderTimeline(order: any) {
+    const statusHistory: Array<{ status: string; note?: string; createdAt: Date }> =
+      order.statusHistory || [];
+
+    const displaySteps = ['ORDER_PLACED', 'PROCESSING', 'SHIPPED', 'DELIVERED'];
+    const stepIndex: Record<string, number> = {
+      ORDER_PLACED: 0,
+      PROCESSING: 1,
+      SHIPPED: 2,
+      DELIVERED: 3,
+    };
+    const toDisplayStep = (status: string): string => {
+      if (status === 'PROCESSING' || status === 'SHIPPED' || status === 'DELIVERED') {
+        return status;
+      }
+      return 'ORDER_PLACED';
+    };
+    const toIso = (value?: Date | null) => (value ? value.toISOString() : null);
+
+    const findStepMeta = (
+      step: string,
+    ): { timestamp: string | null; note?: string } => {
+      if (step === 'ORDER_PLACED') {
+        const placed = statusHistory.find(
+          (h) => h.status === 'PENDING' || h.status === 'CONFIRMED',
+        );
+        return { timestamp: placed ? toIso(placed.createdAt) : toIso(order.createdAt) };
+      }
+
+      const event = statusHistory.find((h) => h.status === step);
+      return {
+        timestamp: event ? toIso(event.createdAt) : null,
+        ...(event?.note ? { note: event.note } : {}),
+      };
+    };
+
+    const isTerminal = order.status === 'CANCELLED' || order.status === 'REFUNDED';
+    const terminalFrom = order.cancelledFromStatus ?? 'PENDING';
+    const currentDisplayStep = isTerminal ? terminalFrom : order.status;
+    const currentIndex = stepIndex[toDisplayStep(currentDisplayStep)] ?? 0;
+
+    const baseTimeline = displaySteps.map((step, index) => {
+      const meta = findStepMeta(step);
+      const isCompleted = index <= currentIndex;
+      const hasNextStageStarted = index < currentIndex;
+      return {
+        id: step.toLowerCase(),
+        status: step,
+        timestamp: isCompleted ? meta.timestamp : null,
+        progress: isCompleted
+          ? isTerminal || hasNextStageStarted
+            ? 100
+            : 70
+          : 0,
+        ...(meta.note ? { note: meta.note } : {}),
+      };
+    });
+
+    if (!isTerminal) {
+      return baseTimeline;
+    }
+
+    const cancelledHistory = statusHistory.find((h) => h.status === 'CANCELLED');
+    const refundedHistory = statusHistory.find((h) => h.status === 'REFUNDED');
+    const isRefunded = order.status === 'REFUNDED';
+
+    const cancelledEvent = {
+      id: 'cancelled',
+      status: 'CANCELLED',
+      timestamp: toIso(order.cancelledAt ?? cancelledHistory?.createdAt ?? order.updatedAt),
+      progress: 100,
+      note: cancelledHistory?.note ?? `Cancelled from ${toDisplayStep(terminalFrom)}`,
+    };
+
+    const refundedEvent = {
+      id: 'refunded',
+      status: 'REFUNDED',
+      timestamp: isRefunded
+        ? toIso(order.refundedAt ?? refundedHistory?.createdAt ?? order.updatedAt)
+        : null,
+      progress: 0,
+      ...(isRefunded
+        ? refundedHistory?.note
+          ? { note: refundedHistory.note }
+          : { note: 'Refunded after CANCELLED' }
+        : {}),
+    };
+
+    const insertAt = currentIndex + 1;
+    const completed = baseTimeline.slice(0, insertAt);
+    const upcoming = baseTimeline.slice(insertAt);
+
+    return [...completed, cancelledEvent, refundedEvent, ...upcoming];
   }
 
   private async generateOrderNumber(): Promise<string> {

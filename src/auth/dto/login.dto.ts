@@ -8,13 +8,17 @@ import {
 
 export class LoginDto {
   @IsOptional()
+  @IsString()
+  identifier?: string;
+
+  @IsOptional()
   @IsEmail()
-  @ValidateIf((o) => !o.phone)
+  @ValidateIf((o) => !o.phone && !o.identifier)
   email?: string;
 
   @IsOptional()
   @IsPhoneNumber()
-  @ValidateIf((o) => !o.email)
+  @ValidateIf((o) => !o.email && !o.identifier)
   phone?: string;
 
   @IsString()

@@ -16,10 +16,16 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreateProductI18nDto } from './dto/create-product-i18n.dto';
 import { ProductQueryI18nDto } from './dto/product-query-i18n.dto';
 import { UpdateProductI18nDto } from './dto/update-product-i18n.dto';
+import { GetUserId } from 'src/decorators/get-user-id.decorator';
+import { SearchHistoryService } from './search-history.service';
+import { SyncSearchHistoryDto } from './dto/sync-search-history.dto';
 
 @Controller('products')
 export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+  constructor(
+    private readonly productService: ProductService,
+    private readonly searchHistoryService: SearchHistoryService,
+  ) {}
 
   private getLocale(query: any, headers: any): string {
     return (
@@ -92,6 +98,56 @@ export class ProductController {
   ) {
     const resolvedLocale = this.getLocale({ locale }, headers);
     return this.productService.findBySlug(slug, resolvedLocale, currency);
+  }
+
+  @Get('search-history')
+  @UseGuards(JwtAuthGuard)
+  async getSearchHistory(@GetUserId() userId: string) {
+    const items = await this.searchHistoryService.getUserHistory(userId);
+    return items.map((item) => ({
+      id: item.id,
+      query: item.query,
+      createdAt:
+        item.updatedAt instanceof Date
+          ? item.updatedAt.toISOString()
+          : item.updatedAt,
+    }));
+  }
+
+  @Get('search-history/popular')
+  getPopularSearchHistory() {
+    return this.searchHistoryService.getPopularQueries();
+  }
+
+  @Post('search-history/sync')
+  @UseGuards(JwtAuthGuard)
+  syncSearchHistory(
+    @GetUserId() userId: string,
+    @Body() dto: SyncSearchHistoryDto,
+  ) {
+    return this.searchHistoryService.syncUserHistory(userId, dto.queries).then((data) => ({
+      mergedCount: data.syncedCount,
+      items: data.items.map((item) => ({
+        id: item.id,
+        query: item.query,
+        createdAt:
+          item.updatedAt instanceof Date
+            ? item.updatedAt.toISOString()
+            : item.updatedAt,
+      })),
+    }));
+  }
+
+  @Delete('search-history/:id')
+  @UseGuards(JwtAuthGuard)
+  deleteSearchHistoryItem(@GetUserId() userId: string, @Param('id') id: string) {
+    return this.searchHistoryService.deleteHistoryItem(userId, id);
+  }
+
+  @Delete('search-history')
+  @UseGuards(JwtAuthGuard)
+  clearSearchHistory(@GetUserId() userId: string) {
+    return this.searchHistoryService.clearUserHistory(userId);
   }
 
   @Get(':id')

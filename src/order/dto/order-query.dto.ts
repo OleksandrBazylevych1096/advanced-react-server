@@ -5,14 +5,24 @@ import {
   Min,
   Max,
   IsEnum,
+  IsArray,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { OrderStatus, PaymentStatus } from './update-order.dto';
 
 export class OrderQueryDto {
   @IsOptional()
-  @IsEnum(OrderStatus)
-  status?: OrderStatus;
+  @IsArray()
+  @IsEnum(OrderStatus, { each: true })
+  @Transform(({ value }) => {
+    if (!value) return undefined;
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      return value.split(',').map((item) => item.trim()).filter(Boolean);
+    }
+    return [value];
+  })
+  status?: OrderStatus[];
 
   @IsOptional()
   @IsEnum(PaymentStatus)
@@ -29,6 +39,10 @@ export class OrderQueryDto {
   @IsOptional()
   @IsString()
   sortOrder?: 'asc' | 'desc';
+
+  @IsOptional()
+  @IsString()
+  locale?: string;
 
   @IsOptional()
   @IsNumber()
