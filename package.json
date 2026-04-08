@@ -39,13 +39,17 @@
     "class-validator": "^0.14.2",
     "cookie-parser": "^1.4.7",
     "google-auth-library": "^10.2.1",
+    "ioredis": "^5.10.1",
     "nodemailer": "^7.0.5",
+    "otplib": "^13.4.0",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "stripe": "^22.0.1",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
