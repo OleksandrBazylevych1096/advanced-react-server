@@ -22,6 +22,10 @@ import { EmailService } from '../email/email.service';
 import { StripeService } from '../order/stripe.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
+import { MetadataParam } from 'node_modules/stripe/cjs/shared';
+import { Checkout } from 'node_modules/stripe/esm/resources/Checkout';
+import { Event } from 'node_modules/stripe/cjs/resources/Events';
+import { PaymentIntent } from 'node_modules/stripe/cjs/resources/PaymentIntents';
 
 type SnapshotItem = {
   productId: string;
@@ -299,7 +303,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const cancelUrl = this.attachSessionIdToUrl(dto.cancelUrl, sessionId);
     const stripeLocale = this.normalizeStripeCheckoutLocale(resolvedLocale);
     const customerEmail = await this.getStripeCheckoutCustomerEmail(userId);
-    const stripeMetadata: Stripe.MetadataParam = {
+    const stripeMetadata: MetadataParam = {
       userId,
       cartHash: prepared.cartHash,
       checkoutSessionId: sessionId,
@@ -309,7 +313,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       stripeMetadata.couponCode = prepared.couponCode;
     }
 
-    let stripeCheckoutSession: Stripe.Checkout.Session;
+    let stripeCheckoutSession
     try {
       stripeCheckoutSession = await this.stripeService.createCheckoutSession({
         amountInMinor: this.toStripeMinorAmount(prepared.totalAmount),
@@ -548,7 +552,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   async processStripeWebhook(payload: Buffer, signature: string) {
-    let event: Stripe.Event;
+    let event: Event;
     try {
       event = this.stripeService.constructWebhookEvent(payload, signature);
     } catch (error) {
@@ -714,7 +718,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async finalizePaidByPaymentIntent(
-    paymentIntent: Stripe.PaymentIntent,
+    paymentIntent: PaymentIntent,
     source: string,
   ) {
     let session = await this.prisma.checkoutSession.findUnique({
@@ -756,7 +760,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private async finalizePaidSession(
     session: CheckoutSession,
-    paymentIntent: Stripe.PaymentIntent,
+    paymentIntent: PaymentIntent,
     source: string,
   ) {
     const expectedAmountMinor = this.toStripeMinorAmount(this.toNumber(session.amount));
@@ -974,7 +978,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private extractCardSnapshotFromPaymentIntent(
-    paymentIntent: Stripe.PaymentIntent,
+    paymentIntent: PaymentIntent,
   ): PaymentCardSnapshot {
     const paymentMethod = paymentIntent.payment_method;
     if (paymentMethod && typeof paymentMethod !== 'string') {
@@ -1001,7 +1005,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resolvePaymentCardSnapshot(
-    paymentIntent: Stripe.PaymentIntent,
+    paymentIntent: PaymentIntent,
   ): Promise<PaymentCardSnapshot> {
     const directCardSnapshot =
       this.extractCardSnapshotFromPaymentIntent(paymentIntent);
@@ -1166,7 +1170,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private toPaymentSessionResponse(
     session: CheckoutSession,
-    paymentIntent: Stripe.PaymentIntent | null,
+    paymentIntent: PaymentIntent | null,
     checkoutUrl?: string,
     stripeCheckoutSessionId?: string,
   ) {
@@ -1229,7 +1233,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private async resolveSessionPaymentIntent(
     session: CheckoutSession,
-  ): Promise<Stripe.PaymentIntent | null> {
+  ): Promise<PaymentIntent | null> {
     if (this.isPaymentIntentRef(session.paymentIntentId)) {
       return this.stripeService.retrievePaymentIntent(session.paymentIntentId);
     }
@@ -1404,7 +1408,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const promotionCode =
+    const promotionCode:any =
       await this.stripeService.findActivePromotionCodeByCode(normalizedCode);
     if (!promotionCode) {
       if (strict) {
@@ -1554,7 +1558,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     taxAmount: number;
     tipAmount: number;
     discountAmount: number;
-  }): Stripe.Checkout.SessionCreateParams.LineItem[] {
+  }){
     const productLineItems = params.items.map((item) => ({
       item,
       amountMinor: this.toStripeMinorAmount(item.total),
@@ -1567,7 +1571,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       this.toStripeMinorAmount(params.discountAmount),
       subtotalMinor,
     );
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    const lineItems: any[] = [];
 
     for (const line of productLineItems) {
       let adjustedAmountMinor = line.amountMinor;
@@ -1649,7 +1653,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private normalizeStripeCheckoutLocale(
     locale?: string,
-  ): Stripe.Checkout.SessionCreateParams.Locale {
+  ) {
     const resolvedLocale = locale || 'en';
     if (resolvedLocale === 'de') {
       return 'de';

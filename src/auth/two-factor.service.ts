@@ -1,11 +1,16 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { authenticator } from 'otplib';
+import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
 import * as QRCode from 'qrcode';
 import * as bcrypt from 'bcrypt';
 import { BCRYPT_ROUNDS } from './auth.constants';
 import { AuthCryptoService } from './crypto.service';
 import { randomTokenBytes } from './utils/crypto.util';
+
+const totp = new TOTP({
+  crypto: new NobleCryptoPlugin(),
+  base32: new ScureBase32Plugin(),
+});
 
 @Injectable()
 export class TwoFactorService {
@@ -15,8 +20,8 @@ export class TwoFactorService {
   ) {}
 
   async setupTotp(userId: string, emailOrPhone: string) {
-    const secret = authenticator.generateSecret();
-    const otpauth = authenticator.keyuri(emailOrPhone, 'AdvancedReactShop', secret);
+    const secret = totp.generateSecret();
+    const otpauth = totp.toURI({ label: emailOrPhone, issuer: 'AdvancedReactShop', secret });
     const qrCodeDataUrl = await QRCode.toDataURL(otpauth);
     const backupCodesPlain = Array.from({ length: 10 }, () =>
       randomTokenBytes(6).replace(/[^A-Za-z0-9]/g, '').slice(0, 10).toUpperCase(),
@@ -46,8 +51,8 @@ export class TwoFactorService {
       throw new UnauthorizedException({ code: 'TWO_FACTOR_NOT_SETUP' });
     }
     const secret = this.crypto.decrypt(user.twoFactorSecret);
-    const ok = authenticator.verify({ token: code, secret });
-    if (!ok) throw new UnauthorizedException({ code: 'TOTP_INVALID' });
+    const result = await totp.verify(code, { secret });
+    if (!result.valid) throw new UnauthorizedException({ code: 'TOTP_INVALID' });
     await this.prisma.user.update({
       where: { id: userId },
       data: { isTwoFactorEnabled: true, twoFactorMethod: 'TOTP' as any },
@@ -58,8 +63,8 @@ export class TwoFactorService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user?.twoFactorSecret) throw new UnauthorizedException({ code: 'TWO_FACTOR_DISABLED' });
     const secret = this.crypto.decrypt(user.twoFactorSecret);
-    const ok = authenticator.verify({ token: code, secret });
-    if (!ok) throw new UnauthorizedException({ code: 'TOTP_INVALID' });
+    const result = await totp.verify(code, { secret });
+    if (!result.valid) throw new UnauthorizedException({ code: 'TOTP_INVALID' });
   }
 
   async verifyBackupCode(userId: string, code: string) {
