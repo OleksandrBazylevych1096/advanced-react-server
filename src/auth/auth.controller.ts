@@ -220,8 +220,8 @@ export class AuthController {
   }
 
   @Post('otp/send')
-  async sendOtp(@Body() dto: SendOtpDto) {
-    return this.authService.sendOtpCompat(dto);
+  async sendOtp(@Body() dto: SendOtpDto, @Req() req: Request) {
+    return this.authService.sendOtpCompat(dto, req);
   }
 
   @Post('otp/verify')

@@ -20,6 +20,57 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
 
+const ACCOUNT_OLD_CONTACT_OTP_PURPOSES = [
+  'account_email_change_old_verify',
+  'account_phone_change_old_verify',
+  'account_phone_remove_verify',
+] as const;
+
+const ACCOUNT_OTP_PURPOSES = [
+  'account_email_add_verify',
+  ...ACCOUNT_OLD_CONTACT_OTP_PURPOSES,
+  'account_email_change_new_verify',
+  'account_phone_add_verify',
+  'account_phone_change_new_verify',
+] as const;
+
+type OtpChannel = 'email' | 'sms';
+type AccountOtpPurpose = (typeof ACCOUNT_OTP_PURPOSES)[number];
+type AccountOldContactOtpPurpose = (typeof ACCOUNT_OLD_CONTACT_OTP_PURPOSES)[number];
+type AccountFlowPurpose = 'account_email_change_new_verify' | 'account_phone_change_new_verify';
+
+type OtpSendPayload = {
+  purpose: string;
+  identifier?: string;
+  mfaToken?: string;
+  channel?: OtpChannel;
+  flowToken?: string;
+};
+
+type OtpVerifyPayload = {
+  purpose: string;
+  code: string;
+  identifier?: string;
+  mfaToken?: string;
+  channel?: OtpChannel;
+  challengeToken?: string;
+  flowToken?: string;
+};
+
+type AccountOtpChallengePayload = {
+  sub: string;
+  scope: 'account_otp';
+  purpose: AccountOtpPurpose;
+  channel: OtpChannel;
+  target: string;
+};
+
+type AccountFlowTokenPayload = {
+  sub: string;
+  scope: 'account_flow';
+  purpose: AccountFlowPurpose;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -388,12 +439,7 @@ export class AuthService {
     };
   }
 
-  async sendOtpCompat(payload: {
-    purpose: string;
-    identifier?: string;
-    mfaToken?: string;
-    channel?: 'email' | 'sms';
-  }) {
+  async sendOtpCompat(payload: OtpSendPayload, req?: Request) {
     if (
       payload.purpose === 'registration_email_verify' ||
       payload.purpose === 'registration_phone_verify'
@@ -410,16 +456,15 @@ export class AuthService {
       return { success: true };
     }
 
+    if (this.isAccountOtpPurpose(payload.purpose)) {
+      const user = await this.resolveAuthenticatedUserFromRequest(req);
+      return this.sendAccountOtp(payload, user);
+    }
+
     return { success: true };
   }
 
-  async verifyOtpCompat(payload: {
-    purpose: string;
-    code: string;
-    identifier?: string;
-    mfaToken?: string;
-    channel?: 'email' | 'sms';
-  }, req?: Request) {
+  async verifyOtpCompat(payload: OtpVerifyPayload, req?: Request) {
     if (
       payload.purpose === 'registration_email_verify' ||
       payload.purpose === 'registration_phone_verify'
@@ -435,6 +480,11 @@ export class AuthService {
         code: payload.code,
       });
       return { success: true };
+    }
+
+    if (this.isAccountOtpPurpose(payload.purpose)) {
+      const user = await this.resolveAuthenticatedUserFromRequest(req);
+      return this.verifyAccountOtp(payload, user.id);
     }
 
     if (payload.purpose === 'login_2fa') {
@@ -660,6 +710,498 @@ export class AuthService {
     return { success: true };
   }
 
+  private isAccountOtpPurpose(purpose: string): purpose is AccountOtpPurpose {
+    return (ACCOUNT_OTP_PURPOSES as readonly string[]).includes(purpose);
+  }
+
+  private isAccountOldContactOtpPurpose(
+    purpose: string,
+  ): purpose is AccountOldContactOtpPurpose {
+    return (ACCOUNT_OLD_CONTACT_OTP_PURPOSES as readonly string[]).includes(
+      purpose,
+    );
+  }
+
+  private createAccountOtpChallengeToken(params: {
+    userId: string;
+    purpose: AccountOtpPurpose;
+    channel: OtpChannel;
+    target: string;
+  }) {
+    const payload: AccountOtpChallengePayload = {
+      sub: params.userId,
+      scope: 'account_otp',
+      purpose: params.purpose,
+      channel: params.channel,
+      target: params.target,
+    };
+    return this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_SECRET'),
+      expiresIn: '10m',
+    });
+  }
+
+  private verifyAccountOtpChallengeToken(params: {
+    token?: string;
+    userId: string;
+    purpose: AccountOtpPurpose;
+  }) {
+    if (!params.token) {
+      throw new BadRequestException({ code: 'CHALLENGE_TOKEN_REQUIRED' });
+    }
+
+    const payload = this.verifyJwtOrUnauthorized<AccountOtpChallengePayload>(
+      params.token,
+      this.configService.get('JWT_SECRET'),
+      'OTP_CHALLENGE_INVALID',
+    );
+
+    if (
+      payload.scope !== 'account_otp' ||
+      payload.sub !== params.userId ||
+      payload.purpose !== params.purpose
+    ) {
+      throw new UnauthorizedException({ code: 'OTP_CHALLENGE_INVALID' });
+    }
+
+    return payload;
+  }
+
+  private createAccountFlowToken(userId: string, purpose: AccountFlowPurpose) {
+    const payload: AccountFlowTokenPayload = {
+      sub: userId,
+      scope: 'account_flow',
+      purpose,
+    };
+    return this.jwtService.sign(payload, {
+      secret: this.configService.get('JWT_SECRET'),
+      expiresIn: '10m',
+    });
+  }
+
+  private verifyAccountFlowToken(params: {
+    token?: string;
+    userId: string;
+    purpose: AccountFlowPurpose;
+  }) {
+    if (!params.token) {
+      throw new BadRequestException({ code: 'FLOW_TOKEN_REQUIRED' });
+    }
+
+    const payload = this.verifyJwtOrUnauthorized<AccountFlowTokenPayload>(
+      params.token,
+      this.configService.get('JWT_SECRET'),
+      'FLOW_TOKEN_INVALID',
+    );
+
+    if (
+      payload.scope !== 'account_flow' ||
+      payload.sub !== params.userId ||
+      payload.purpose !== params.purpose
+    ) {
+      throw new UnauthorizedException({ code: 'FLOW_TOKEN_INVALID' });
+    }
+  }
+
+  private normalizeEmailIdentifier(email: string | undefined): string {
+    const normalized = email?.trim().toLowerCase();
+    if (!normalized) {
+      throw new BadRequestException({ code: 'IDENTIFIER_REQUIRED' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+      throw new BadRequestException({ code: 'INVALID_EMAIL' });
+    }
+    return normalized;
+  }
+
+  private normalizePhoneIdentifier(phone: string | undefined): string {
+    const normalized = phone?.trim();
+    if (!normalized) {
+      throw new BadRequestException({ code: 'IDENTIFIER_REQUIRED' });
+    }
+    if (!/^\+[1-9]\d{7,14}$/.test(normalized)) {
+      throw new BadRequestException({ code: 'INVALID_PHONE' });
+    }
+    return normalized;
+  }
+
+  private maskEmail(email: string): string {
+    const [localPartRaw, domainRaw] = email.split('@');
+    const localPart = localPartRaw ?? '';
+    const domain = domainRaw ?? '';
+    const visibleLocal = localPart.length <= 2 ? localPart : localPart.slice(0, 2);
+    return `${visibleLocal}${'*'.repeat(Math.max(localPart.length - visibleLocal.length, 0))}@${domain}`;
+  }
+
+  private maskPhone(phone: string): string {
+    const visible = phone.slice(-4);
+    return `***${visible}`;
+  }
+
+  private maskTarget(target: string, channel: OtpChannel): string {
+    return channel === 'email' ? this.maskEmail(target) : this.maskPhone(target);
+  }
+
+  private extractAccessTokenFromRequest(req?: Request): string | undefined {
+    const authorizationHeader = req?.headers?.authorization;
+    const headerValue = Array.isArray(authorizationHeader)
+      ? authorizationHeader[0]
+      : authorizationHeader;
+
+    if (typeof headerValue === 'string' && headerValue.toLowerCase().startsWith('bearer ')) {
+      const token = headerValue.slice(7).trim();
+      if (token) {
+        return token;
+      }
+    }
+
+    const cookieToken = req?.cookies?.access_token;
+    return typeof cookieToken === 'string' ? cookieToken : undefined;
+  }
+
+  private async resolveAuthenticatedUserFromRequest(req?: Request) {
+    const accessToken = this.extractAccessTokenFromRequest(req);
+    if (!accessToken) {
+      throw new UnauthorizedException({ code: 'ACCESS_TOKEN_REQUIRED' });
+    }
+
+    const payload = this.verifyJwtOrUnauthorized<{ sub: string }>(
+      accessToken,
+      this.configService.get('JWT_SECRET'),
+      'ACCESS_TOKEN_INVALID',
+    );
+
+    const user = await this.userService.findOne(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
+    }
+
+    return user;
+  }
+
+  private resolveOldContactVerificationTarget(params: {
+    user: { email?: string | null; phone?: string | null };
+    purpose: AccountOldContactOtpPurpose;
+    requestedChannel?: OtpChannel;
+  }) {
+    const isEmailChange = params.purpose === 'account_email_change_old_verify';
+
+    if (isEmailChange && !params.user.email) {
+      throw new BadRequestException({ code: 'EMAIL_NOT_FOUND' });
+    }
+
+    if (!isEmailChange && !params.user.phone) {
+      throw new BadRequestException({ code: 'PHONE_NOT_FOUND' });
+    }
+
+    const preferredChannel: OtpChannel = isEmailChange ? 'email' : 'sms';
+    const availableChannels: OtpChannel[] = [];
+
+    if (params.user.email) {
+      availableChannels.push('email');
+    }
+    if (params.user.phone) {
+      availableChannels.push('sms');
+    }
+
+    const channel = params.requestedChannel ?? preferredChannel;
+    if (!availableChannels.includes(channel)) {
+      throw new BadRequestException({ code: 'TARGET_NOT_AVAILABLE' });
+    }
+
+    const target =
+      channel === 'email'
+        ? params.user.email?.trim()
+        : params.user.phone?.trim();
+
+    if (!target) {
+      throw new BadRequestException({ code: 'TARGET_NOT_AVAILABLE' });
+    }
+
+    return {
+      channel,
+      target,
+      maskedTarget: this.maskTarget(target, channel),
+      alternativeChannel: availableChannels.find((value) => value !== channel),
+    };
+  }
+
+  private async ensureEmailCanBeUsedByUser(params: {
+    userId: string;
+    email: string;
+  }) {
+    const existing = await this.userService.findByEmail(params.email);
+    if (existing && existing.id !== params.userId) {
+      throw new BadRequestException({ code: 'EMAIL_TAKEN' });
+    }
+  }
+
+  private async ensurePhoneCanBeUsedByUser(params: {
+    userId: string;
+    phone: string;
+  }) {
+    const existing = await this.userService.findByPhone(params.phone);
+    if (existing && existing.id !== params.userId) {
+      throw new BadRequestException({ code: 'PHONE_TAKEN' });
+    }
+  }
+
+  private async sendAccountOtpChallenge(params: {
+    userId: string;
+    purpose: AccountOtpPurpose;
+    channel: OtpChannel;
+    target: string;
+  }) {
+    const code = await this.verificationService.createVerificationCode(
+      params.userId,
+      VerificationType.REGISTRATION,
+    );
+    await this.verificationService.sendVerificationCode(
+      params.target,
+      code,
+      params.channel === 'email',
+    );
+    return this.createAccountOtpChallengeToken({
+      userId: params.userId,
+      purpose: params.purpose,
+      channel: params.channel,
+      target: params.target,
+    });
+  }
+
+  private async sendAccountOtp(
+    payload: OtpSendPayload,
+    user: { id: string; email?: string | null; phone?: string | null },
+  ) {
+    const userId = user.id;
+
+    if (this.isAccountOldContactOtpPurpose(payload.purpose)) {
+      const { channel, target, maskedTarget, alternativeChannel } =
+        this.resolveOldContactVerificationTarget({
+          user,
+          purpose: payload.purpose,
+          requestedChannel: payload.channel,
+        });
+      const challengeToken = await this.sendAccountOtpChallenge({
+        userId,
+        purpose: payload.purpose,
+        channel,
+        target,
+      });
+      return {
+        success: true,
+        challengeToken,
+        channel,
+        maskedTarget,
+        alternativeChannel,
+      };
+    }
+
+    if (payload.purpose === 'account_email_add_verify') {
+      if (user.email) {
+        throw new BadRequestException({ code: 'EMAIL_ALREADY_EXISTS' });
+      }
+      const email = this.normalizeEmailIdentifier(payload.identifier);
+      await this.ensureEmailCanBeUsedByUser({ userId, email });
+      const challengeToken = await this.sendAccountOtpChallenge({
+        userId,
+        purpose: payload.purpose,
+        channel: 'email',
+        target: email,
+      });
+      return {
+        success: true,
+        challengeToken,
+        channel: 'email' as const,
+        maskedTarget: this.maskTarget(email, 'email'),
+      };
+    }
+
+    if (payload.purpose === 'account_email_change_new_verify') {
+      if (!user.email) {
+        throw new BadRequestException({ code: 'EMAIL_NOT_FOUND' });
+      }
+      this.verifyAccountFlowToken({
+        token: payload.flowToken,
+        userId,
+        purpose: 'account_email_change_new_verify',
+      });
+      const email = this.normalizeEmailIdentifier(payload.identifier);
+      if (email === user.email.trim().toLowerCase()) {
+        throw new BadRequestException({ code: 'EMAIL_UNCHANGED' });
+      }
+      await this.ensureEmailCanBeUsedByUser({ userId, email });
+      const challengeToken = await this.sendAccountOtpChallenge({
+        userId,
+        purpose: payload.purpose,
+        channel: 'email',
+        target: email,
+      });
+      return {
+        success: true,
+        challengeToken,
+        channel: 'email' as const,
+        maskedTarget: this.maskTarget(email, 'email'),
+      };
+    }
+
+    if (payload.purpose === 'account_phone_add_verify') {
+      if (user.phone) {
+        throw new BadRequestException({ code: 'PHONE_ALREADY_EXISTS' });
+      }
+      const phone = this.normalizePhoneIdentifier(payload.identifier);
+      await this.ensurePhoneCanBeUsedByUser({ userId, phone });
+      const challengeToken = await this.sendAccountOtpChallenge({
+        userId,
+        purpose: payload.purpose,
+        channel: 'sms',
+        target: phone,
+      });
+      return {
+        success: true,
+        challengeToken,
+        channel: 'sms' as const,
+        maskedTarget: this.maskTarget(phone, 'sms'),
+      };
+    }
+
+    if (payload.purpose === 'account_phone_change_new_verify') {
+      if (!user.phone) {
+        throw new BadRequestException({ code: 'PHONE_NOT_FOUND' });
+      }
+      this.verifyAccountFlowToken({
+        token: payload.flowToken,
+        userId,
+        purpose: 'account_phone_change_new_verify',
+      });
+      const phone = this.normalizePhoneIdentifier(payload.identifier);
+      if (phone === user.phone.trim()) {
+        throw new BadRequestException({ code: 'PHONE_UNCHANGED' });
+      }
+      await this.ensurePhoneCanBeUsedByUser({ userId, phone });
+      const challengeToken = await this.sendAccountOtpChallenge({
+        userId,
+        purpose: payload.purpose,
+        channel: 'sms',
+        target: phone,
+      });
+      return {
+        success: true,
+        challengeToken,
+        channel: 'sms' as const,
+        maskedTarget: this.maskTarget(phone, 'sms'),
+      };
+    }
+
+    return { success: true };
+  }
+
+  private async verifyAccountOtp(payload: OtpVerifyPayload, userId: string) {
+    const purpose = payload.purpose as AccountOtpPurpose;
+
+    const challenge = this.verifyAccountOtpChallengeToken({
+      token: payload.challengeToken,
+      userId,
+      purpose,
+    });
+
+    await this.verificationService.verifyCode(
+      userId,
+      payload.code,
+      VerificationType.REGISTRATION,
+    );
+
+    if (purpose === 'account_email_change_old_verify') {
+      return {
+        success: true,
+        flowToken: this.createAccountFlowToken(
+          userId,
+          'account_email_change_new_verify',
+        ),
+      };
+    }
+
+    if (purpose === 'account_phone_change_old_verify') {
+      return {
+        success: true,
+        flowToken: this.createAccountFlowToken(
+          userId,
+          'account_phone_change_new_verify',
+        ),
+      };
+    }
+
+    if (purpose === 'account_email_change_new_verify') {
+      this.verifyAccountFlowToken({
+        token: payload.flowToken,
+        userId,
+        purpose: 'account_email_change_new_verify',
+      });
+      const updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          email: challenge.target,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      });
+      return { success: true, user: this.mapUserForSession(updatedUser) };
+    }
+
+    if (purpose === 'account_email_add_verify') {
+      const updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          email: challenge.target,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      });
+      return { success: true, user: this.mapUserForSession(updatedUser) };
+    }
+
+    if (purpose === 'account_phone_add_verify') {
+      const updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          phone: challenge.target,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      });
+      return { success: true, user: this.mapUserForSession(updatedUser) };
+    }
+
+    if (purpose === 'account_phone_change_new_verify') {
+      this.verifyAccountFlowToken({
+        token: payload.flowToken,
+        userId,
+        purpose: 'account_phone_change_new_verify',
+      });
+      const updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          phone: challenge.target,
+          isVerified: true,
+          verifiedAt: new Date(),
+        },
+      });
+      return { success: true, user: this.mapUserForSession(updatedUser) };
+    }
+
+    if (purpose === 'account_phone_remove_verify') {
+      const updatedUser = await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          phone: null,
+        },
+      });
+      return { success: true, user: this.mapUserForSession(updatedUser) };
+    }
+
+    return { success: true };
+  }
+
   private hashToken(token: string): string {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
@@ -700,8 +1242,12 @@ export class AuthService {
   }
 
   private mapUserForSession(user: any) {
-    const isEmailVerified = Boolean(user?.email && user?.isVerified);
-    const isPhoneVerified = Boolean(user?.phone && user?.isVerified);
+    const isEmailVerified = Boolean(
+      user?.email && (user?.isEmailVerified ?? user?.isVerified),
+    );
+    const isPhoneVerified = Boolean(
+      user?.phone && (user?.isPhoneVerified ?? user?.isVerified),
+    );
     return {
       id: user.id,
       email: user.email ?? undefined,
@@ -709,8 +1255,8 @@ export class AuthService {
       provider: user.provider ?? AuthProvider.LOCAL,
       isEmailVerified,
       isPhoneVerified,
-      emailNotificationsEnabled: (user as any).emailNotificationsEnabled ?? true,
-      isTwoFactorEnabled: (user as any).isTwoFactorEnabled ?? false,
+      emailNotificationsEnabled: user?.emailNotificationsEnabled ?? true,
+      isTwoFactorEnabled: user?.isTwoFactorEnabled ?? false,
     };
   }
 

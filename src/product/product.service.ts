@@ -470,11 +470,18 @@ export class ProductService {
     // =====================================================================
     // 9. RESPONSE
     // =====================================================================
+    const totalPages = Math.ceil(total / limit);
+
     return {
       products: transformedProducts,
-      total,
-      page,
-      limit,
+      pagination: {
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+        limit,
+        page,
+        total,
+        totalPages,
+      },
       facets: {
         priceRange: {
           min: minPriceFacet?.toNumber(),
@@ -780,7 +787,19 @@ export class ProductService {
       }),
     );
 
-    return { products: transformedProducts, total };
+    const totalPages = Math.ceil(total / limit);
+
+    return {
+      products: transformedProducts,
+      pagination: {
+        hasNext: 1 < totalPages,
+        hasPrev: false,
+        limit,
+        page: 1,
+        total,
+        totalPages,
+      },
+    };
   }
 
   async getFirstOrderDiscount(locale: string = 'uk', currency: string = 'USD') {

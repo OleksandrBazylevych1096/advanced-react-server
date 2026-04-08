@@ -8,6 +8,13 @@ export class SendOtpDto {
     'login_2fa',
     'two_factor_setup',
     'password_reset',
+    'account_email_add_verify',
+    'account_email_change_old_verify',
+    'account_email_change_new_verify',
+    'account_phone_add_verify',
+    'account_phone_change_old_verify',
+    'account_phone_change_new_verify',
+    'account_phone_remove_verify',
   ])
   purpose: string;
 
@@ -18,6 +25,10 @@ export class SendOtpDto {
   @IsOptional()
   @IsString()
   mfaToken?: string;
+
+  @IsOptional()
+  @IsString()
+  flowToken?: string;
 
   @IsOptional()
   @IsString()
