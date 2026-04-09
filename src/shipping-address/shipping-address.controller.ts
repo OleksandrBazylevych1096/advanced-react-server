@@ -51,7 +51,6 @@ export class ShippingAddressController {
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@GetUserId() userId: string, @Body() dto: CreateAddressDto) {
-    console.log(userId);
     return this.service.create(userId, dto);
   }
 

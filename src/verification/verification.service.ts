@@ -90,12 +90,10 @@ export class VerificationService {
   }
 
   private async sendEmailVerification(email: string, code: string) {
-    console.log('Email code:', code);
     await this.emailService.sendVerificationCode(email, code);
   }
 
   private async sendSmsVerification(phone: string, code: string) {
-    console.log('SMS code:', code);
     await this.smsService.sendVerificationCode(phone, code);
   }
 

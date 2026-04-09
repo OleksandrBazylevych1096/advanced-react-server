@@ -272,7 +272,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
             paymentIntent.status !== 'canceled' &&
             paymentIntent.status !== 'succeeded'
           ) {
-            await this.stripeService.cancelPaymentIntent(activeSession.paymentIntentId);
+            await this.stripeService.cancelPaymentIntent(
+              activeSession.paymentIntentId,
+            );
           }
         } else {
           const checkoutSessionId = this.checkoutSessionIdFromRef(
@@ -313,7 +315,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       stripeMetadata.couponCode = prepared.couponCode;
     }
 
-    let stripeCheckoutSession
+    let stripeCheckoutSession;
     try {
       stripeCheckoutSession = await this.stripeService.createCheckoutSession({
         amountInMinor: this.toStripeMinorAmount(prepared.totalAmount),
@@ -424,7 +426,10 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const paymentIntent = await this.resolveSessionPaymentIntent(session);
     let resolvedOrder = session.order ?? null;
 
-    if (session.status === CheckoutSessionStatus.pending_payment && paymentIntent) {
+    if (
+      session.status === CheckoutSessionStatus.pending_payment &&
+      paymentIntent
+    ) {
       if (paymentIntent.status === 'succeeded') {
         const order = await this.finalizePaidSession(
           session,
@@ -602,7 +607,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `Stripe webhook processing failed for event ${event.type}: ${(error as Error).message}`,
       );
-      throw new InternalServerErrorException('Stripe webhook processing failed');
+      throw new InternalServerErrorException(
+        'Stripe webhook processing failed',
+      );
     }
   }
 
@@ -613,7 +620,11 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     displayCurrency: string,
     currency: string,
   ) {
-    const cart = await this.cartService.getCart(userId, locale, displayCurrency);
+    const cart = await this.cartService.getCart(
+      userId,
+      locale,
+      displayCurrency,
+    );
 
     if (!cart.items.length) {
       throw new BadRequestException('Cart is empty');
@@ -635,8 +646,10 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
         ? await this.deliverySelectionService.getStoredSelection(userId)
         : null;
 
-    const deliveryDate = dto.deliveryDate || storedDeliverySelection?.deliveryDate;
-    const deliveryTime = dto.deliveryTime || storedDeliverySelection?.deliveryTime;
+    const deliveryDate =
+      dto.deliveryDate || storedDeliverySelection?.deliveryDate;
+    const deliveryTime =
+      dto.deliveryTime || storedDeliverySelection?.deliveryTime;
     const pricing = await this.calculateCheckoutPricing(
       this.toNumber(cart.totals.subtotal),
       this.toNumber(cart.totals.estimatedShipping),
@@ -751,7 +764,11 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const order = await this.finalizePaidSession(session, paymentIntent, source);
+    const order = await this.finalizePaidSession(
+      session,
+      paymentIntent,
+      source,
+    );
     return {
       sessionId: session.id,
       orderId: order.id,
@@ -763,8 +780,11 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     paymentIntent: PaymentIntent,
     source: string,
   ) {
-    const expectedAmountMinor = this.toStripeMinorAmount(this.toNumber(session.amount));
-    const actualAmountMinor = paymentIntent.amount_received || paymentIntent.amount;
+    const expectedAmountMinor = this.toStripeMinorAmount(
+      this.toNumber(session.amount),
+    );
+    const actualAmountMinor =
+      paymentIntent.amount_received || paymentIntent.amount;
     const actualCurrency = (paymentIntent.currency || '').toLowerCase();
     const expectedCurrency = (session.currency || '').toLowerCase();
 
@@ -812,7 +832,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
     const snapshot = session.snapshot as unknown as CheckoutSnapshot;
     if (!snapshot?.items?.length) {
-      throw new InternalServerErrorException('Invalid checkout session snapshot');
+      throw new InternalServerErrorException(
+        'Invalid checkout session snapshot',
+      );
     }
     const paymentCard = await this.resolvePaymentCardSnapshot(paymentIntent);
 
@@ -821,11 +843,11 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       const productIds = snapshot.items.map((i) => i.productId);
       const lockedProducts = await tx.$queryRaw<
         { id: string; name: string; slug: string; stock: number }[]
-      >(Prisma.sql`SELECT id, name, slug, stock FROM products WHERE id IN (${Prisma.join(productIds)}) FOR UPDATE`);
-
-      const productMap = new Map(
-        lockedProducts.map((p) => [p.id, p]),
+      >(
+        Prisma.sql`SELECT id, name, slug, stock FROM products WHERE id IN (${Prisma.join(productIds)}) FOR UPDATE`,
       );
+
+      const productMap = new Map(lockedProducts.map((p) => [p.id, p]));
 
       for (const item of snapshot.items) {
         const product = productMap.get(item.productId);
@@ -835,7 +857,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (product.stock < item.quantity) {
-          throw new BadRequestException(`Insufficient stock for ${product.name}`);
+          throw new BadRequestException(
+            `Insufficient stock for ${product.name}`,
+          );
         }
       }
 
@@ -857,9 +881,13 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
           userId: session.userId,
           orderNumber,
           totalAmount: new Prisma.Decimal(this.toNumber(session.amount)),
-          shippingAmount: new Prisma.Decimal(this.toNumber(session.shippingAmount)),
+          shippingAmount: new Prisma.Decimal(
+            this.toNumber(session.shippingAmount),
+          ),
           taxAmount: new Prisma.Decimal(this.toNumber(session.taxAmount)),
-          discountAmount: new Prisma.Decimal(this.toNumber(session.discountAmount)),
+          discountAmount: new Prisma.Decimal(
+            this.toNumber(session.discountAmount),
+          ),
           tipAmount: new Prisma.Decimal(this.toNumber(session.tipAmount)),
           couponCode: session.couponCode,
           currency: session.currency.toUpperCase(),
@@ -1014,10 +1042,10 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     }
 
     try {
-      const expandedPaymentIntent = await this.stripeService.retrievePaymentIntent(
-        paymentIntent.id,
-        { expand: ['payment_method', 'latest_charge'] },
-      );
+      const expandedPaymentIntent =
+        await this.stripeService.retrievePaymentIntent(paymentIntent.id, {
+          expand: ['payment_method', 'latest_charge'],
+        });
       return this.extractCardSnapshotFromPaymentIntent(expandedPaymentIntent);
     } catch (error) {
       this.logger.warn(
@@ -1027,11 +1055,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async sendOrderEmail(
-    userId: string,
-    order: any,
-    currency: string,
-  ) {
+  private async sendOrderEmail(userId: string, order: any, currency: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { email: true, emailNotificationsEnabled: true },
@@ -1190,7 +1214,10 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private attachSessionIdToUrl(url: string | undefined, sessionId: string): string {
+  private attachSessionIdToUrl(
+    url: string | undefined,
+    sessionId: string,
+  ): string {
     if (!url) {
       throw new BadRequestException(
         'successUrl and cancelUrl are required for Stripe Checkout redirect',
@@ -1238,15 +1265,17 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       return this.stripeService.retrievePaymentIntent(session.paymentIntentId);
     }
 
-    const checkoutSessionId = this.checkoutSessionIdFromRef(session.paymentIntentId);
+    const checkoutSessionId = this.checkoutSessionIdFromRef(
+      session.paymentIntentId,
+    );
     if (!checkoutSessionId) {
       return null;
     }
 
-    const stripeCheckoutSession = await this.stripeService.retrieveCheckoutSession(
-      checkoutSessionId,
-      { expand: ['payment_intent'] },
-    );
+    const stripeCheckoutSession =
+      await this.stripeService.retrieveCheckoutSession(checkoutSessionId, {
+        expand: ['payment_intent'],
+      });
 
     const paymentIntent =
       typeof stripeCheckoutSession.payment_intent === 'string'
@@ -1272,21 +1301,20 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private async buildReusableCheckoutSessionResponse(
     session: CheckoutSession,
-  ): Promise<
-    | {
-        sessionId: string;
-        stripePaymentIntentId: string;
-        stripeClientSecret: string;
-        checkoutUrl?: string;
-        stripeCheckoutSessionId?: string;
-        status: CheckoutSessionStatus;
-        amount: number;
-        currency: string;
-        expiresAt: Date;
-      }
-    | null
-  > {
-    const checkoutSessionId = this.checkoutSessionIdFromRef(session.paymentIntentId);
+  ): Promise<{
+    sessionId: string;
+    stripePaymentIntentId: string;
+    stripeClientSecret: string;
+    checkoutUrl?: string;
+    stripeCheckoutSessionId?: string;
+    status: CheckoutSessionStatus;
+    amount: number;
+    currency: string;
+    expiresAt: Date;
+  } | null> {
+    const checkoutSessionId = this.checkoutSessionIdFromRef(
+      session.paymentIntentId,
+    );
     if (!checkoutSessionId) {
       return null;
     }
@@ -1349,7 +1377,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
             paymentIntent.status !== 'canceled' &&
             paymentIntent.status !== 'succeeded'
           ) {
-            await this.stripeService.cancelPaymentIntent(session.paymentIntentId);
+            await this.stripeService.cancelPaymentIntent(
+              session.paymentIntentId,
+            );
           }
         } else {
           const checkoutSessionId = this.checkoutSessionIdFromRef(
@@ -1408,8 +1438,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const promotionCode:any =
+    const promotionCode: any =
       await this.stripeService.findActivePromotionCodeByCode(normalizedCode);
+
     if (!promotionCode) {
       if (strict) {
         throw new BadRequestException('Coupon code is invalid');
@@ -1422,10 +1453,10 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       };
     }
 
-    const coupon =
-      typeof promotionCode.coupon === 'string'
-        ? null
-        : promotionCode.coupon;
+    const rawCoupon =
+      promotionCode?.promotion?.coupon ?? promotionCode?.coupon ?? null;
+    const coupon = typeof rawCoupon === 'string' ? null : rawCoupon;
+
     if (!coupon) {
       if (strict) {
         throw new BadRequestException('Coupon details are unavailable');
@@ -1527,12 +1558,12 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const baseTotalAmount = this.roundMoney(
       subtotal + shippingAmount + taxAmount + normalizedTip,
     );
-    const totalAmount = this.roundMoney(
-      baseTotalAmount - discountAmount,
-    );
+    const totalAmount = this.roundMoney(baseTotalAmount - discountAmount);
 
     if (totalAmount < 0) {
-      throw new BadRequestException('Calculated checkout total cannot be negative');
+      throw new BadRequestException(
+        'Calculated checkout total cannot be negative',
+      );
     }
 
     return {
@@ -1558,7 +1589,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     taxAmount: number;
     tipAmount: number;
     discountAmount: number;
-  }){
+  }) {
     const productLineItems = params.items.map((item) => ({
       item,
       amountMinor: this.toStripeMinorAmount(item.total),
@@ -1651,9 +1682,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     return (currency || 'usd').trim().toLowerCase();
   }
 
-  private normalizeStripeCheckoutLocale(
-    locale?: string,
-  ) {
+  private normalizeStripeCheckoutLocale(locale?: string) {
     const resolvedLocale = locale || 'en';
     if (resolvedLocale === 'de') {
       return 'de';
@@ -1705,7 +1734,9 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     return Number.isFinite(value) && value >= 60000 ? value : 300000;
   }
 
-  private async generateOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
+  private async generateOrderNumber(
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');

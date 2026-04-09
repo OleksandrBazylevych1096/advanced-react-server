@@ -113,7 +113,6 @@ export class AuthService {
   }
 
   async googleAuth(googleUser: any) {
-    console.log(googleUser);
     let user = await this.prisma.user.findUnique({
       where: { googleId: googleUser.googleId },
     });
@@ -156,7 +155,6 @@ export class AuthService {
   }
 
   async verifyGoogleCode(code: string, req?: Request) {
-    console.log(code);
     const verification = await this.prisma.verificationCode.findFirst({
       where: {
         code,

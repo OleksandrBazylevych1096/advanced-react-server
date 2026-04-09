@@ -132,7 +132,7 @@ export class StripeService {
       code: normalizedCode,
       active: true,
       limit: 1,
-      expand: ['data.coupon'],
+      expand: ['data.promotion.coupon'],
     });
 
     return response.data[0] ?? null;
