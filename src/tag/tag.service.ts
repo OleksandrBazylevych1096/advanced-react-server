@@ -14,6 +14,13 @@ import { Prisma } from '@prisma/client';
 export class TagService {
   constructor(private prisma: PrismaService) {}
 
+  private buildSlugMap(fallbackSlug?: string) {
+    return {
+      en: fallbackSlug ?? '',
+      de: fallbackSlug ?? '',
+    };
+  }
+
   private getIncludeWithTranslations(locale?: string) {
     return {
       translations: locale ? { where: { locale } } : true,
@@ -35,13 +42,17 @@ export class TagService {
         ...tag,
         name: translation.name || tag.name,
         description: translation.description || tag.description,
+        slugMap: this.buildSlugMap(tag.slug),
         translations: undefined, // Видаляємо масив перекладів з результату
       };
     }
 
     // Якщо переклад не знайдено, використовуємо базові значення
     const { translations, ...tagWithoutTranslations } = tag;
-    return tagWithoutTranslations;
+    return {
+      ...tagWithoutTranslations,
+      slugMap: this.buildSlugMap(tag.slug),
+    };
   }
 
   async create(createTagDto: CreateTagDto) {

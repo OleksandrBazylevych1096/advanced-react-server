@@ -22,6 +22,24 @@ export class OrderService {
     private stripeService: StripeService,
   ) {}
 
+  private normalizeLocale(locale?: string): string {
+    const normalized = (locale || 'en').trim().toLowerCase();
+    return normalized.split('-')[0] || 'en';
+  }
+
+  private buildSlugMap(
+    fallbackSlug?: string,
+    translations?: Array<{ locale: string; slug: string }>,
+  ) {
+    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
+    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
+
+    return {
+      en: enSlug ?? fallbackSlug ?? '',
+      de: deSlug ?? fallbackSlug ?? '',
+    };
+  }
+
   async create(userId: string, createOrderDto: CreateOrderDto) {
     const orderItems = createOrderDto.items || [];
 
@@ -168,11 +186,7 @@ export class OrderService {
               product: {
                 include: {
                   images: true,
-                  translations: locale
-                    ? {
-                        where: { locale },
-                      }
-                    : true,
+                  translations: true,
                 },
               },
             },
@@ -223,11 +237,7 @@ export class OrderService {
                 include: {
                   images: true,
                   categories: true,
-                  translations: locale
-                    ? {
-                        where: { locale },
-                      }
-                    : true,
+                  translations: true,
                 },
               },
             },
@@ -347,11 +357,7 @@ export class OrderService {
                 include: {
                   images: true,
                   categories: true,
-                  translations: locale
-                    ? {
-                        where: { locale },
-                      }
-                    : true,
+                  translations: true,
                 },
               },
             },
@@ -519,6 +525,7 @@ export class OrderService {
   }
 
   private normalizeOrderForFrontend(order: any, locale: string) {
+    const normalizedLocale = this.normalizeLocale(locale);
     const {
       shippingAddress,
       shippingCity,
@@ -533,7 +540,7 @@ export class OrderService {
       ...item,
       price: Number(item.price ?? 0),
       total: Number(item.total ?? 0),
-      product: this.localizeOrderProduct(item.product, locale),
+      product: this.localizeOrderProduct(item.product, normalizedLocale),
     }));
 
     const subtotalAmount =
@@ -565,13 +572,15 @@ export class OrderService {
   private localizeOrderProduct(product: any, locale: string) {
     if (!product) return product;
 
-    const translation =
-      product.translations?.find((t: any) => t.locale === locale) ||
-      product.translations?.[0];
+    const normalizedLocale = this.normalizeLocale(locale);
+    const translation = product.translations?.find(
+      (t: any) => t.locale === normalizedLocale,
+    );
 
     if (!translation) {
       return {
         ...product,
+        slugMap: this.buildSlugMap(product.slug, product.translations),
         price: Number(product.price ?? 0),
         oldPrice:
           product.oldPrice !== null && product.oldPrice !== undefined
@@ -585,6 +594,7 @@ export class OrderService {
       ...product,
       name: translation.name,
       slug: translation.slug,
+      slugMap: this.buildSlugMap(product.slug, product.translations),
       shortDescription: translation.shortDescription,
       description: translation.description,
       price: Number(product.price ?? 0),

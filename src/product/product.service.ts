@@ -18,15 +18,30 @@ export class ProductService {
     private exchangeRateService: ExchangeRateService,
   ) {}
 
+  private normalizeLocale(locale?: string): string {
+    const normalized = (locale || 'en').trim().toLowerCase();
+    return normalized.split('-')[0] || 'en';
+  }
+
+  private buildSlugMap(
+    fallbackSlug?: string,
+    translations?: Array<{ locale: string; slug: string }>,
+  ) {
+    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
+    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
+
+    return {
+      en: enSlug ?? fallbackSlug ?? '',
+      de: deSlug ?? fallbackSlug ?? '',
+    };
+  }
+
   private getIncludeWithTranslations(locale?: string) {
+    locale = this.normalizeLocale(locale);
     return {
       categories: {
         include: {
-          translations: locale
-            ? {
-                where: { locale },
-              }
-            : true,
+          translations: true,
         },
       },
       tags: {
@@ -39,11 +54,7 @@ export class ProductService {
         },
       },
       images: true,
-      translations: locale
-        ? {
-            where: { locale },
-          }
-        : true,
+      translations: true,
       reviews: {
         include: {
           user: {
@@ -72,15 +83,20 @@ export class ProductService {
     locale: string = 'en',
     currency: string = 'USD',
   ) {
-    const translation =
-      product.translations?.find((t: any) => t.locale === locale) ||
-      product.translations?.[0]; // Fallback до першого доступного перекладу
+    const normalizedLocale = this.normalizeLocale(locale);
+    const translation = product.translations?.find(
+      (t: any) => t.locale === normalizedLocale,
+    );
 
     if (translation) {
+      const fallbackSlug = product.slug;
       product.name = translation.name;
       product.slug = translation.slug;
       product.shortDescription = translation.shortDescription;
       product.description = translation.description;
+      product.slugMap = this.buildSlugMap(fallbackSlug, product.translations);
+    } else {
+      product.slugMap = this.buildSlugMap(product.slug, product.translations);
     }
 
     // Handle price conversion
@@ -116,9 +132,9 @@ export class ProductService {
     // Трансформуємо категорії
     if (product.categories) {
       product.categories = product.categories.map((category: any) => {
-        const catTranslation =
-          category.translations?.find((t: any) => t.locale === locale) ||
-          category.translations?.[0];
+        const catTranslation = category.translations?.find(
+          (t: any) => t.locale === normalizedLocale,
+        );
 
         if (catTranslation) {
           return {
@@ -126,19 +142,24 @@ export class ProductService {
             name: catTranslation.name,
             description: catTranslation.description,
             slug: catTranslation.slug,
+            slugMap: this.buildSlugMap(category.slug, category.translations),
             translations: undefined, // Прибираємо translations з відповіді
           };
         }
-        return { ...category, translations: undefined };
+        return {
+          ...category,
+          slugMap: this.buildSlugMap(category.slug, category.translations),
+          translations: undefined,
+        };
       });
     }
 
     // Трансформуємо теги
     if (product.tags) {
       product.tags = product.tags.map((tag: any) => {
-        const tagTranslation =
-          tag.translations?.find((t: any) => t.locale === locale) ||
-          tag.translations?.[0];
+        const tagTranslation = tag.translations?.find(
+          (t: any) => t.locale === normalizedLocale,
+        );
 
         if (tagTranslation) {
           return {
@@ -235,6 +256,8 @@ export class ProductService {
       currency = 'USD',
     } = query;
 
+    const normalizedLocale = this.normalizeLocale(locale);
+
     // =====================================================================
     // 1. Категорії (з урахуванням сабкатегорій)
     // =====================================================================
@@ -245,7 +268,7 @@ export class ProductService {
     }
 
     if (categorySlug) {
-      categoryIds = await this.getCategoryIdsBySlug(categorySlug, locale);
+      categoryIds = await this.getCategoryIdsBySlug(categorySlug, normalizedLocale);
     }
 
     // =====================================================================
@@ -287,7 +310,7 @@ export class ProductService {
               {
                 translations: {
                   some: {
-                    locale,
+                    locale: normalizedLocale,
                     OR: [
                       { name: { contains: q, mode: 'insensitive' } },
                       { slug: { contains: q, mode: 'insensitive' } },
@@ -360,7 +383,7 @@ export class ProductService {
         orderBy,
         skip,
         take: limit,
-        include: this.getIncludeWithTranslations(locale),
+        include: this.getIncludeWithTranslations(normalizedLocale),
       }),
 
       this.prisma.product.count({ where }),
@@ -413,7 +436,7 @@ export class ProductService {
           },
           include: {
             translations: {
-              where: { locale },
+              where: { locale: normalizedLocale },
               take: 1,
             },
           },
@@ -432,7 +455,7 @@ export class ProductService {
     // =====================================================================
     const transformedProducts = await Promise.all(
       products.map((p) =>
-        this.transformProductWithTranslation(p, locale, currency),
+        this.transformProductWithTranslation(p, normalizedLocale, currency),
       ),
     );
 
@@ -549,6 +572,7 @@ export class ProductService {
   }
 
   async findOne(id: string, locale: string = 'uk', currency: string = 'USD') {
+    locale = this.normalizeLocale(locale);
     const product = await this.prisma.product.findUnique({
       where: { id },
       include: this.getIncludeWithTranslations(locale),
@@ -584,6 +608,7 @@ export class ProductService {
     locale: string = 'uk',
     currency: string = 'USD',
   ) {
+    locale = this.normalizeLocale(locale);
     // Спочатку шукаємо по переkладу
     let product = await this.prisma.product.findFirst({
       where: {
@@ -725,6 +750,7 @@ export class ProductService {
     locale: string = 'uk',
     currency: string = 'USD',
   ) {
+    locale = this.normalizeLocale(locale);
     const products = await this.prisma.product.findMany({
       take: limit,
       where: {
@@ -759,6 +785,7 @@ export class ProductService {
     locale: string = 'uk',
     currency: string = 'USD',
   ) {
+    locale = this.normalizeLocale(locale);
     const [products, total] = await Promise.all([
       this.prisma.product.findMany({
         where: {
@@ -803,6 +830,7 @@ export class ProductService {
   }
 
   async getFirstOrderDiscount(locale: string = 'uk', currency: string = 'USD') {
+    locale = this.normalizeLocale(locale);
     const products = await this.prisma.product.findMany({
       where: {
         stock: {
@@ -873,6 +901,7 @@ export class ProductService {
     locale: string = 'uk',
     currency: string = 'USD',
   ) {
+    locale = this.normalizeLocale(locale);
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
       include: {

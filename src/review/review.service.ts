@@ -14,6 +14,35 @@ import { Prisma } from '@prisma/client';
 export class ReviewService {
   constructor(private prisma: PrismaService) {}
 
+  private buildSlugMap(
+    fallbackSlug?: string,
+    translations?: Array<{ locale: string; slug: string }>,
+  ) {
+    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
+    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
+
+    return {
+      en: enSlug ?? fallbackSlug ?? '',
+      de: deSlug ?? fallbackSlug ?? '',
+    };
+  }
+
+  private addProductSlugMap<T extends { product?: any }>(review: T): T {
+    if (!review?.product) {
+      return review;
+    }
+
+    const product = review.product;
+    return {
+      ...review,
+      product: {
+        ...product,
+        slugMap: this.buildSlugMap(product.slug, product.translations),
+        translations: undefined,
+      },
+    };
+  }
+
   async create(userId: string, createReviewDto: CreateReviewDto) {
     const { productId, rating, title, comment } = createReviewDto;
 
@@ -53,7 +82,7 @@ export class ReviewService {
 
     const isVerified = !!userOrder;
 
-    return this.prisma.review.create({
+    const review = await this.prisma.review.create({
       data: {
         userId,
         productId,
@@ -76,10 +105,16 @@ export class ReviewService {
             id: true,
             name: true,
             slug: true,
+            translations: {
+              where: { locale: { in: ['en', 'de'] } },
+              select: { locale: true, slug: true },
+            },
           },
         },
       },
     });
+
+    return this.addProductSlugMap(review);
   }
 
   async findAll(query: ReviewQueryDto) {
@@ -122,6 +157,10 @@ export class ReviewService {
               id: true,
               name: true,
               slug: true,
+              translations: {
+                where: { locale: { in: ['en', 'de'] } },
+                select: { locale: true, slug: true },
+              },
               images: {
                 take: 1,
                 where: { isMain: true },
@@ -136,7 +175,7 @@ export class ReviewService {
     const totalPages = Math.ceil(total / limit);
 
     return {
-      reviews,
+      reviews: reviews.map((review) => this.addProductSlugMap(review)),
       pagination: {
         page,
         limit,
@@ -165,6 +204,10 @@ export class ReviewService {
             id: true,
             name: true,
             slug: true,
+            translations: {
+              where: { locale: { in: ['en', 'de'] } },
+              select: { locale: true, slug: true },
+            },
             images: {
               take: 1,
               where: { isMain: true },
@@ -178,7 +221,7 @@ export class ReviewService {
       throw new NotFoundException('Review not found');
     }
 
-    return review;
+    return this.addProductSlugMap(review);
   }
 
   async findByProduct(productId: string, query: ReviewQueryDto) {
@@ -217,6 +260,10 @@ export class ReviewService {
               id: true,
               name: true,
               slug: true,
+              translations: {
+                where: { locale: { in: ['en', 'de'] } },
+                select: { locale: true, slug: true },
+              },
               images: {
                 take: 1,
                 where: { isMain: true },
@@ -231,7 +278,7 @@ export class ReviewService {
     const totalPages = Math.ceil(total / limit);
 
     return {
-      reviews,
+      reviews: reviews.map((review) => this.addProductSlugMap(review)),
       pagination: {
         page,
         limit,
@@ -260,7 +307,7 @@ export class ReviewService {
     const { productId, ...updateData } = updateReviewDto;
     // Don't allow changing productId in updates
 
-    return this.prisma.review.update({
+    const updatedReview = await this.prisma.review.update({
       where: { id },
       data: updateData,
       include: {
@@ -277,10 +324,16 @@ export class ReviewService {
             id: true,
             name: true,
             slug: true,
+            translations: {
+              where: { locale: { in: ['en', 'de'] } },
+              select: { locale: true, slug: true },
+            },
           },
         },
       },
     });
+
+    return this.addProductSlugMap(updatedReview);
   }
 
   async remove(id: string, userId: string) {
@@ -372,7 +425,7 @@ export class ReviewService {
   }
 
   async getRecentReviews(limit: number = 10) {
-    return this.prisma.review.findMany({
+    const reviews = await this.prisma.review.findMany({
       take: limit,
       orderBy: {
         createdAt: 'desc',
@@ -391,6 +444,10 @@ export class ReviewService {
             id: true,
             name: true,
             slug: true,
+            translations: {
+              where: { locale: { in: ['en', 'de'] } },
+              select: { locale: true, slug: true },
+            },
             images: {
               take: 1,
               where: { isMain: true },
@@ -399,5 +456,7 @@ export class ReviewService {
         },
       },
     });
+
+    return reviews.map((review) => this.addProductSlugMap(review));
   }
 }

@@ -16,6 +16,24 @@ export class CartService {
     private exchangeRateService: ExchangeRateService,
   ) {}
 
+  private normalizeLocale(locale?: string): string {
+    const normalized = (locale || 'en').trim().toLowerCase();
+    return normalized.split('-')[0] || 'en';
+  }
+
+  private buildSlugMap(
+    fallbackSlug?: string,
+    translations?: Array<{ locale: string; slug: string }>,
+  ) {
+    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
+    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
+
+    return {
+      en: enSlug ?? fallbackSlug ?? '',
+      de: deSlug ?? fallbackSlug ?? '',
+    };
+  }
+
   async addToCart(
     userId: string,
     addToCartDto: AddToCartDto,
@@ -117,11 +135,7 @@ export class CartService {
           include: {
             images: true,
             categories: true,
-            translations: locale
-              ? {
-                  where: { locale },
-                }
-              : true,
+            translations: true,
           },
         },
       },
@@ -338,15 +352,20 @@ export class CartService {
     locale: string,
     currency: string,
   ) {
-    const translation =
-      product.translations?.find((t: any) => t.locale === locale) ||
-      product.translations?.[0];
+    const normalizedLocale = this.normalizeLocale(locale);
+    const translation = product.translations?.find(
+      (t: any) => t.locale === normalizedLocale,
+    );
 
     if (translation) {
+      const fallbackSlug = product.slug;
       product.name = translation.name;
       product.slug = translation.slug;
       product.shortDescription = translation.shortDescription;
       product.description = translation.description;
+      product.slugMap = this.buildSlugMap(fallbackSlug, product.translations);
+    } else {
+      product.slugMap = this.buildSlugMap(product.slug, product.translations);
     }
 
     const basePrice =
@@ -383,7 +402,7 @@ export class CartService {
     locale: string,
     params?: { available?: number },
   ): string {
-    const normalizedLocale = locale || 'en';
+    const normalizedLocale = this.normalizeLocale(locale);
 
     if (code === 'PRODUCT_UNAVAILABLE') {
       if (normalizedLocale === 'de') {

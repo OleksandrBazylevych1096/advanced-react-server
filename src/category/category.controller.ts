@@ -8,6 +8,7 @@ import {
   Delete,
   Query,
   UseGuards,
+  Headers,
 } from '@nestjs/common';
 import { CategoryService } from './category.service';
 import { CreateCategoryI18nDto } from './dto/create-category-i18n.dto';
@@ -19,6 +20,14 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
+  private getLocale(query: { locale?: string }, headers?: any): string {
+    return (
+      query.locale ||
+      headers?.['accept-language']?.split(',')[0]?.split('-')[0] ||
+      'en'
+    );
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   create(@Body() createCategoryDto: CreateCategoryI18nDto) {
@@ -26,27 +35,44 @@ export class CategoryController {
   }
 
   @Get()
-  findAll(@Query() query: CategoryQueryDto) {
+  findAll(@Query() query: CategoryQueryDto, @Headers() headers?: any) {
     const includeInactiveBool =
       typeof query.includeInactive === 'string'
         ? query.includeInactive === 'true'
         : false;
-    return this.categoryService.findAll(includeInactiveBool, query.locale);
+    return this.categoryService.findAll(
+      includeInactiveBool,
+      this.getLocale(query, headers),
+    );
   }
 
   @Get('top-level')
-  getTopLevelCategories(@Query('locale') locale?: string) {
-    return this.categoryService.getTopLevelCategories(locale);
+  getTopLevelCategories(
+    @Query('locale') locale?: string,
+    @Headers() headers?: any,
+  ) {
+    return this.categoryService.getTopLevelCategories(
+      this.getLocale({ locale }, headers),
+    );
   }
 
   @Get('tree')
-  getCategoryTree(@Query('locale') locale?: string) {
-    return this.categoryService.getCategoryTree(locale);
+  getCategoryTree(@Query('locale') locale?: string, @Headers() headers?: any) {
+    return this.categoryService.getCategoryTree(
+      this.getLocale({ locale }, headers),
+    );
   }
 
   @Get('slug/:slug')
-  findBySlug(@Param('slug') slug: string, @Query('locale') locale?: string) {
-    return this.categoryService.findBySlug(slug, locale);
+  findBySlug(
+    @Param('slug') slug: string,
+    @Query('locale') locale?: string,
+    @Headers() headers?: any,
+  ) {
+    return this.categoryService.findBySlug(
+      slug,
+      this.getLocale({ locale }, headers),
+    );
   }
 
   @Patch(':id')
@@ -68,25 +94,34 @@ export class CategoryController {
   findChildrenBySlug(
     @Param('slug') slug: string,
     @Query('locale') locale?: string,
+    @Headers() headers?: any,
   ) {
-    return this.categoryService.findChildrenBySlug(slug, locale);
+    return this.categoryService.findChildrenBySlug(
+      slug,
+      this.getLocale({ locale }, headers),
+    );
   }
 
   @Get('breadcrumbs/:value')
   async getBreadcrumbs(
     @Param('value') value: string,
     @Query('locale') locale: string = 'en',
+    @Headers() headers?: any,
   ) {
+    const resolvedLocale = this.getLocale({ locale }, headers);
     const looksLikeId = /^[a-z0-9]{12,}$/i.test(value);
     if (looksLikeId) {
       try {
-        const category = await this.categoryService.findOne(value, locale);
-        return this.categoryService.getBreadcrumbsBySlug(category.slug, locale);
+        const category = await this.categoryService.findOne(value, resolvedLocale);
+        return this.categoryService.getBreadcrumbsBySlug(
+          category.slug,
+          resolvedLocale,
+        );
       } catch {
         // Fallback to slug lookup.
       }
     }
-    return this.categoryService.getBreadcrumbsBySlug(value, locale);
+    return this.categoryService.getBreadcrumbsBySlug(value, resolvedLocale);
   }
 
   @Get('navigation/:slug')
@@ -94,10 +129,12 @@ export class CategoryController {
     @Param('slug') slug: string | undefined,
     @Query('search') search: string | undefined,
     @Query('locale') locale: string = 'en',
+    @Headers() headers?: any,
   ) {
+    const resolvedLocale = this.getLocale({ locale }, headers);
     return this.categoryService.getCategoryNavigation(
       slug === 'undefined' ? undefined : slug,
-      locale,
+      resolvedLocale,
       search,
     );
   }
@@ -107,16 +144,22 @@ export class CategoryController {
     @Query('slug') slug: string | undefined,
     @Query('search') search: string | undefined,
     @Query('locale') locale: string = 'en',
+    @Headers() headers?: any,
   ) {
+    const resolvedLocale = this.getLocale({ locale }, headers);
     return this.categoryService.getCategoryNavigation(
       slug === 'undefined' ? undefined : slug,
-      locale,
+      resolvedLocale,
       search,
     );
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Query('locale') locale?: string) {
-    return this.categoryService.findOne(id, locale);
+  findOne(
+    @Param('id') id: string,
+    @Query('locale') locale?: string,
+    @Headers() headers?: any,
+  ) {
+    return this.categoryService.findOne(id, this.getLocale({ locale }, headers));
   }
 }

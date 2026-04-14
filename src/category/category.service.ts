@@ -12,17 +12,35 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 export class CategoryService {
   constructor(private prisma: PrismaService) {}
 
+  private normalizeLocale(locale?: string): string {
+    const normalized = (locale || 'en').trim().toLowerCase();
+    return normalized.split('-')[0] || 'en';
+  }
+
+  private buildSlugMap(
+    fallbackSlug?: string,
+    translations?: Array<{ locale: string; slug: string }>,
+  ) {
+    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
+    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
+
+    return {
+      en: enSlug ?? fallbackSlug ?? '',
+      de: deSlug ?? fallbackSlug ?? '',
+    };
+  }
+
   private getIncludeWithTranslations(locale?: string) {
     return {
       parent: {
         include: {
-          translations: locale ? { where: { locale } } : true,
+          translations: true,
         },
       },
       children: {
         where: { isActive: true },
         include: {
-          translations: locale ? { where: { locale } } : true,
+          translations: true,
           _count: {
             select: {
               products: true,
@@ -30,7 +48,7 @@ export class CategoryService {
           },
         },
       },
-      translations: locale ? { where: { locale } } : true,
+      translations: true,
       _count: {
         select: {
           products: true,
@@ -43,39 +61,58 @@ export class CategoryService {
     category: any,
     locale: string = 'en',
   ) {
-    const translation =
-      category.translations?.find((t: any) => t.locale === locale) ||
-      category.translations?.[0];
+    const normalizedLocale = this.normalizeLocale(locale);
+    const translation = category.translations?.find(
+      (t: any) => t.locale === normalizedLocale,
+    );
 
     if (translation) {
+      const fallbackSlug = category.slug;
       category.name = translation.name;
       category.slug = translation.slug;
       category.description = translation.description;
+      category.slugMap = this.buildSlugMap(fallbackSlug, category.translations);
+    } else {
+      category.slugMap = this.buildSlugMap(category.slug, category.translations);
     }
 
     if (category.parent) {
-      const parentTranslation =
-        category.parent.translations?.find((t: any) => t.locale === locale) ||
-        category.parent.translations?.[0];
+      const parentTranslation = category.parent.translations?.find(
+        (t: any) => t.locale === normalizedLocale,
+      );
 
       if (parentTranslation) {
+        const parentFallbackSlug = category.parent.slug;
         category.parent.name = parentTranslation.name;
         category.parent.slug = parentTranslation.slug;
         category.parent.description = parentTranslation.description;
+        category.parent.slugMap = this.buildSlugMap(
+          parentFallbackSlug,
+          category.parent.translations,
+        );
+      } else {
+        category.parent.slugMap = this.buildSlugMap(
+          category.parent.slug,
+          category.parent.translations,
+        );
       }
       delete category.parent.translations;
     }
 
     if (category.children) {
       category.children = category.children.map((child: any) => {
-        const childTranslation =
-          child.translations?.find((t: any) => t.locale === locale) ||
-          child.translations?.[0];
+        const childTranslation = child.translations?.find(
+          (t: any) => t.locale === normalizedLocale,
+        );
 
         if (childTranslation) {
+          const childFallbackSlug = child.slug;
           child.name = childTranslation.name;
           child.slug = childTranslation.slug;
           child.description = childTranslation.description;
+          child.slugMap = this.buildSlugMap(childFallbackSlug, child.translations);
+        } else {
+          child.slugMap = this.buildSlugMap(child.slug, child.translations);
         }
         delete child.translations;
         return child;
@@ -89,9 +126,10 @@ export class CategoryService {
   private async getBreadcrumbs(
     categoryId: string,
     locale: string,
-  ): Promise<{ id: string; name: string; slug: string }[]> {
+  ): Promise<{ id: string; name: string; slug: string; slugMap: { en: string; de: string } }[]> {
+    locale = this.normalizeLocale(locale);
     // Явно вказуємо тип для масиву breadcrumbs
-    const breadcrumbs: { id: string; name: string; slug: string }[] = [];
+    const breadcrumbs: { id: string; name: string; slug: string; slugMap: { en: string; de: string } }[] = [];
 
     // Змінюємо тип currentId на string | null
     let currentId: string | null = categoryId;
@@ -123,6 +161,7 @@ export class CategoryService {
           // Примусове приведення до string, оскільки трансформація гарантує їх наявність
           name: transformed.name as string,
           slug: transformed.slug as string,
+          slugMap: transformed.slugMap,
         });
       }
 
@@ -134,6 +173,7 @@ export class CategoryService {
   }
 
   async getBreadcrumbsBySlug(slug: string, locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     // 1. Знайти категорію за основним slug
     let category = await this.prisma.category.findUnique({
       where: { slug },
@@ -224,6 +264,7 @@ export class CategoryService {
   }
 
   async findAll(includeInactive: boolean = false, locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     const where = includeInactive ? {} : { isActive: true };
 
     const categories = await this.prisma.category.findMany({
@@ -240,6 +281,7 @@ export class CategoryService {
   }
 
   async findOne(id: string, locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     const category = await this.prisma.category.findUnique({
       where: { id },
       include: {
@@ -270,6 +312,7 @@ export class CategoryService {
   }
 
   async findBySlug(slug: string, locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     // First try to find by main category slug
     let category = await this.prisma.category.findUnique({
       where: { slug },
@@ -464,6 +507,7 @@ export class CategoryService {
   }
 
   async getTopLevelCategories(locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     const categories = await this.prisma.category.findMany({
       where: {
         parentId: null,
@@ -481,6 +525,7 @@ export class CategoryService {
   }
 
   async getCategoryTree(locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     const categories = await this.prisma.category.findMany({
       where: { isActive: true },
       include: this.getIncludeWithTranslations(locale),
@@ -516,6 +561,7 @@ export class CategoryService {
   }
 
   async findChildrenBySlug(slug: string, locale: string = 'en') {
+    locale = this.normalizeLocale(locale);
     // 1. Try main slug
     let category = await this.prisma.category.findUnique({
       where: { slug },
@@ -580,6 +626,7 @@ export class CategoryService {
     slug: string,
     locale: string,
   ) {
+    locale = this.normalizeLocale(locale);
     let category = await this.prisma.category.findFirst({
       where: { slug, isActive: true },
       include: {
@@ -618,6 +665,7 @@ export class CategoryService {
   }
 
   private async getTopLevelCategoriesBySearch(search: string, locale: string) {
+    locale = this.normalizeLocale(locale);
     const normalizedSearch = search.trim();
 
     if (!normalizedSearch) {
@@ -757,6 +805,7 @@ export class CategoryService {
     locale: string = 'en',
     search?: string,
   ) {
+    locale = this.normalizeLocale(locale);
     const normalizedSearch = search?.trim();
 
     if (normalizedSearch) {
