@@ -845,6 +845,19 @@ export class CategoryService {
       });
 
       const breadcrumbs = await this.getBreadcrumbs(category.id, locale);
+      const siblingParentId = category.parent?.id ?? null;
+      const fallbackItems = children.length
+        ? children
+        : await this.prisma.category.findMany({
+            where: {
+              parentId: siblingParentId,
+              isActive: true,
+            },
+            include: this.getIncludeWithTranslations(locale),
+            orderBy: {
+              name: 'asc',
+            },
+          });
 
       return {
         currentCategory: this.transformCategoryWithTranslation(
@@ -854,8 +867,8 @@ export class CategoryService {
         parentCategory: category.parent
           ? this.transformCategoryWithTranslation({ ...category.parent }, locale)
           : null,
-        items: children.map((child) =>
-          this.transformCategoryWithTranslation(child, locale),
+        items: fallbackItems.map((item) =>
+          this.transformCategoryWithTranslation(item, locale),
         ),
         isShowingSubcategories: true,
         breadcrumbs,
