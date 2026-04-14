@@ -95,8 +95,8 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const incomingRefreshToken = req.cookies?.refresh_token;
-    const incomingAccessToken = req.cookies?.access_token;
+    const incomingRefreshToken = this.authService.extractRefreshTokenFromRequest(req);
+    const incomingAccessToken = this.authService.extractAccessTokenFromRequest(req);
     try {
       const { user, tokens } = await this.authService.refreshTokens(
         incomingRefreshToken,
@@ -131,7 +131,7 @@ export class AuthController {
 
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const incomingRefreshToken = req.cookies?.refresh_token;
+    const incomingRefreshToken = this.authService.extractRefreshTokenFromRequest(req);
     await this.authService.logout(incomingRefreshToken);
     res.clearCookie('access_token', this.authService.getAccessCookieOptions());
     res.clearCookie(
@@ -301,7 +301,7 @@ export class AuthController {
   @Get('sessions')
   @UseGuards(JwtAuthGuard)
   async getSessions(@GetUserId() userId: string, @Req() req: Request) {
-    return this.authService.listSessionsCompat(userId, req.cookies?.refresh_token);
+    return this.authService.listSessionsCompat(userId, req);
   }
 
   @Delete('sessions/:id')
@@ -320,7 +320,7 @@ export class AuthController {
     return this.authService.revokeAllSessionsCompat(
       userId,
       includeCurrent === 'true',
-      req.cookies?.refresh_token,
+      req,
     );
   }
 

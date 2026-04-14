@@ -361,7 +361,7 @@ export class AuthService {
         'REFRESH_TOKEN_INVALID',
       );
 
-      const user = await this.userService.findOne(payload.sub as string);
+      const user = await this.userService.findOne(payload.sub);
       if (!user) {
         throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
       }
@@ -494,7 +494,7 @@ export class AuthService {
         this.configService.get('JWT_SECRET'),
         'MFA_TOKEN_INVALID',
       );
-      const user = await this.userService.findOne(decoded.sub as string);
+      const user = await this.userService.findOne(decoded.sub);
       if (!user) {
         throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
       }
@@ -514,7 +514,7 @@ export class AuthService {
       this.configService.get('JWT_SECRET'),
       'MFA_TOKEN_INVALID',
     );
-    const user = await this.userService.findOne(decoded.sub as string);
+    const user = await this.userService.findOne(decoded.sub);
     if (!user) {
       throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
     }
@@ -525,7 +525,7 @@ export class AuthService {
     };
   }
 
-  async setupTwoFactorCompat() {
+   setupTwoFactorCompat() {
     const backupCodes = Array.from({ length: 8 }, () =>
       crypto.randomBytes(4).toString('hex').toUpperCase(),
     );
@@ -552,10 +552,8 @@ export class AuthService {
     return { success: true };
   }
 
-  async listSessionsCompat(userId: string, currentRefreshToken?: string) {
-    const currentHash = currentRefreshToken
-      ? this.hashToken(currentRefreshToken)
-      : null;
+  async listSessionsCompat(userId: string, req?: Request) {
+    const currentSession = await this.resolveCurrentSessionForRequest(userId, req);
     const sessions = await this.prisma.session.findMany({
       where: { userId, isActive: true },
       orderBy: { lastActivity: 'desc' },
@@ -572,7 +570,9 @@ export class AuthService {
       lastActivity: session.lastActivity.toISOString(),
       revokedAt: session.revokedAt ? session.revokedAt.toISOString() : null,
       revokedReason: session.revokedReason ?? null,
-      isCurrent: currentHash ? session.refreshTokenHash === currentHash : false,
+      isCurrent:
+        session.id === currentSession?.id ||
+        session.refreshTokenHash === currentSession?.refreshTokenHash,
     }));
   }
 
@@ -600,19 +600,19 @@ export class AuthService {
   async revokeAllSessionsCompat(
     userId: string,
     includeCurrent = false,
-    currentRefreshToken?: string,
+    req?: Request,
   ) {
-    const currentHash = currentRefreshToken
-      ? this.hashToken(currentRefreshToken)
-      : null;
+    const currentSession = includeCurrent
+      ? null
+      : await this.resolveCurrentSessionForRequest(userId, req);
     const where = {
       userId,
       isActive: true,
-      ...(includeCurrent || !currentHash
+      ...(includeCurrent || !currentSession
         ? {}
         : {
-            refreshTokenHash: {
-              not: currentHash,
+            id: {
+              not: currentSession.id,
             },
           }),
     };
@@ -702,7 +702,7 @@ export class AuthService {
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
-      where: { id: payload.sub as string },
+      where: { id: payload.sub },
       data: { password: passwordHash },
     });
     return { success: true };
@@ -840,7 +840,7 @@ export class AuthService {
     return channel === 'email' ? this.maskEmail(target) : this.maskPhone(target);
   }
 
-  private extractAccessTokenFromRequest(req?: Request): string | undefined {
+  extractAccessTokenFromRequest(req?: Request): string | undefined {
     const authorizationHeader = req?.headers?.authorization;
     const headerValue = Array.isArray(authorizationHeader)
       ? authorizationHeader[0]
@@ -855,6 +855,22 @@ export class AuthService {
 
     const cookieToken = req?.cookies?.access_token;
     return typeof cookieToken === 'string' ? cookieToken : undefined;
+  }
+
+  extractRefreshTokenFromRequest(req?: Request): string | undefined {
+    const parsedCookieToken = req?.cookies?.refresh_token;
+    const candidates = [
+      ...this.extractCookieValues(req, 'refresh_token'),
+      ...(typeof parsedCookieToken === 'string' ? [parsedCookieToken] : []),
+    ];
+
+    const uniqueCandidates = [...new Set(candidates.filter(Boolean))];
+    const jwtCandidate = uniqueCandidates.find((token) => this.looksLikeJwt(token));
+    if (jwtCandidate) {
+      return jwtCandidate;
+    }
+
+    return uniqueCandidates.at(-1);
   }
 
   private async resolveAuthenticatedUserFromRequest(req?: Request) {
@@ -875,6 +891,40 @@ export class AuthService {
     }
 
     return user;
+  }
+
+  private async resolveCurrentSessionForRequest(userId: string, req?: Request) {
+    const refreshToken = this.extractRefreshTokenFromRequest(req);
+    if (refreshToken) {
+      const refreshTokenHash = this.hashToken(refreshToken);
+      const session = await this.prisma.session.findFirst({
+        where: {
+          userId,
+          isActive: true,
+          refreshTokenHash,
+        },
+        select: { id: true, refreshTokenHash: true },
+      });
+      if (session) {
+        return session;
+      }
+    }
+
+    const requestMeta = this.resolveRequestMeta(req);
+    if (!requestMeta.ip || !requestMeta.userAgent) {
+      return null;
+    }
+
+    return this.prisma.session.findFirst({
+      where: {
+        userId,
+        isActive: true,
+        ip: requestMeta.ip,
+        userAgent: requestMeta.userAgent,
+      },
+      select: { id: true, refreshTokenHash: true },
+      orderBy: { lastActivity: 'desc' },
+    });
   }
 
   private resolveOldContactVerificationTarget(params: {
@@ -1204,6 +1254,32 @@ export class AuthService {
     return crypto.createHash('sha256').update(token).digest('hex');
   }
 
+  private extractCookieValues(req: Request | undefined, name: string): string[] {
+    const cookieHeader = req?.headers?.cookie;
+    const rawHeader = Array.isArray(cookieHeader) ? cookieHeader.join('; ') : cookieHeader;
+    if (!rawHeader) {
+      return [];
+    }
+
+    return rawHeader
+      .split(';')
+      .map((part) => part.trim())
+      .filter((part) => part.startsWith(`${name}=`))
+      .map((part) => {
+        const value = part.slice(name.length + 1).trim();
+        try {
+          return decodeURIComponent(value);
+        } catch {
+          return value;
+        }
+      })
+      .filter(Boolean);
+  }
+
+  private looksLikeJwt(token: string): boolean {
+    return token.split('.').length === 3;
+  }
+
   private extractIpFromHeader(headerValue?: string | string[]) {
     if (!headerValue) return null;
     const raw = Array.isArray(headerValue) ? headerValue[0] : headerValue;
@@ -1231,7 +1307,7 @@ export class AuthService {
   }
 
   private getAccessTokenExpiresAt(accessToken: string): string {
-    const decoded = this.jwtService.decode(accessToken) as { exp?: number } | null;
+    const decoded = this.jwtService.decode(accessToken);
     if (decoded?.exp) {
       return new Date(decoded.exp * 1000).toISOString();
     }
@@ -1302,7 +1378,7 @@ export class AuthService {
       this.configService.get('JWT_SECRET'),
       'REFRESH_TOKEN_INVALID',
     );
-    const user = await this.userService.findOne(payload.sub as string);
+    const user = await this.userService.findOne(payload.sub);
     if (!user) {
       throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
     }
