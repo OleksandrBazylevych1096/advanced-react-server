@@ -133,7 +133,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const {
       shippingAddress,
       shippingCity,
-      shippingCountry: _shippingCountry,
+      shippingCountry,
       shippingPostal,
       shippingNumberOfApartment,
       ...rest
@@ -165,6 +165,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
       shippingAddress: {
         streetAddress: shippingAddress,
         city: shippingCity,
+        country: shippingCountry,
         zipCode: shippingPostal,
         numberOfApartment: shippingNumberOfApartment ?? null,
       },

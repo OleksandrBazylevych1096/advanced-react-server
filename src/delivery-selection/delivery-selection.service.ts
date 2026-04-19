@@ -269,7 +269,7 @@ export class DeliverySelectionService {
       return {
         shippingAddress: savedAddress.streetAddress,
         shippingCity: savedAddress.city,
-        shippingCountry: 'UA',
+        shippingCountry: savedAddress.country || 'UA',
         shippingPostal: savedAddress.zipCode,
         latitude: savedAddress.latitude ?? undefined,
         longitude: savedAddress.longitude ?? undefined,
@@ -288,7 +288,7 @@ export class DeliverySelectionService {
       return {
         shippingAddress: defaultAddress.streetAddress,
         shippingCity: defaultAddress.city,
-        shippingCountry: 'UA',
+        shippingCountry: defaultAddress.country || 'UA',
         shippingPostal: defaultAddress.zipCode,
         latitude: defaultAddress.latitude ?? undefined,
         longitude: defaultAddress.longitude ?? undefined,

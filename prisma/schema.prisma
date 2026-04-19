@@ -146,6 +146,7 @@ model ShippingAddress {
   userId            String
   streetAddress     String
   city              String
+  country           String?
   numberOfApartment String
   zipCode           String
   latitude          Float?

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ForbiddenException,
@@ -6,12 +7,18 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAddressDto } from './dto/create-address.dto';
 import { UpdateAddressDto } from './dto/update-address.dto';
+import { CountryService } from '../country/country.service';
 
 @Injectable()
 export class ShippingAddressService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly countryService: CountryService,
+  ) {}
 
   async create(userId: string, dto: CreateAddressDto) {
+    const country = await this.resolveCountryCode(dto.country);
+
     if (dto.isDefault) {
       await this.prisma.shippingAddress.updateMany({
         where: { userId, isDefault: true },
@@ -26,6 +33,7 @@ export class ShippingAddressService {
     return this.prisma.shippingAddress.create({
       data: {
         ...dto,
+        country,
         userId,
         isDefault: dto.isDefault ?? existingCount === 0,
       },
@@ -57,6 +65,10 @@ export class ShippingAddressService {
 
   async update(id: string, userId: string, dto: UpdateAddressDto) {
     await this.findOne(id, userId);
+    const country =
+      dto.country === undefined
+        ? undefined
+        : await this.resolveCountryCode(dto.country);
 
     if (dto.isDefault) {
       await this.prisma.shippingAddress.updateMany({
@@ -67,7 +79,10 @@ export class ShippingAddressService {
 
     return this.prisma.shippingAddress.update({
       where: { id },
-      data: dto,
+      data: {
+        ...dto,
+        ...(country === undefined ? {} : { country }),
+      },
     });
   }
 
@@ -119,5 +134,52 @@ export class ShippingAddressService {
     }
 
     return address;
+  }
+
+  private async resolveCountryCode(country?: string): Promise<string | undefined> {
+    const normalizedInput = country?.trim();
+
+    if (!normalizedInput) {
+      return undefined;
+    }
+
+    const directCode = normalizedInput.toUpperCase();
+
+    try {
+      const countryEntity = await this.countryService.findByCode(directCode);
+      return countryEntity.code.toUpperCase();
+    } catch {}
+
+    const countryEntity = await this.prisma.country.findFirst({
+      where: {
+        OR: [
+          {
+            name: {
+              equals: normalizedInput,
+              mode: 'insensitive',
+            },
+          },
+          {
+            translations: {
+              some: {
+                name: {
+                  equals: normalizedInput,
+                  mode: 'insensitive',
+                },
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        code: true,
+      },
+    });
+
+    if (!countryEntity) {
+      throw new BadRequestException('Country must be a valid ISO code or known country name');
+    }
+
+    return countryEntity.code.toUpperCase();
   }
 }

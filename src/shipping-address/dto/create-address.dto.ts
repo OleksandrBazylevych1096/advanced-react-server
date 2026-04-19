@@ -9,6 +9,11 @@ export class CreateAddressDto {
   @IsNotEmpty()
   city: string;
 
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  country?: string;
+
   @IsString()
   @IsNotEmpty()
   numberOfApartment: string;
