@@ -4,8 +4,6 @@ const prisma = new PrismaClient();
 
 async function main() {
   console.log('Seeding database...');
-
-  // Create promo banners
   const promoBanners = await Promise.all([
     prisma.promoBanner.upsert({
       where: { id: 'banner-1' },
@@ -154,8 +152,6 @@ async function main() {
   ]);
 
   console.log('Created promo banners:', promoBanners.length);
-
-  // Create categories
   const categoriesData = [
     {
       name: 'Fruits',
@@ -163,15 +159,15 @@ async function main() {
       icon: 'fruits',
       deName: 'Obst',
       deSlug: 'obst',
-      deDesc: 'Frisches und köstliches Obst',
+      deDesc: 'Frisches und kГ¶stliches Obst',
     },
     {
       name: 'Vegetables',
       slug: 'vegetables',
       icon: 'vegetables',
-      deName: 'Gemüse',
+      deName: 'GemГјse',
       deSlug: 'gemuese',
-      deDesc: 'Frisches Gemüse und Grünzeug',
+      deDesc: 'Frisches GemГјse und GrГјnzeug',
     },
     {
       name: 'Dairy',
@@ -179,14 +175,14 @@ async function main() {
       icon: 'dairy',
       deName: 'Milchprodukte',
       deSlug: 'milchprodukte',
-      deDesc: 'Milch, Käse und Milchprodukte',
+      deDesc: 'Milch, KГ¤se und Milchprodukte',
     },
 
     {
       name: 'Bakery',
       slug: 'bakery',
       icon: 'bakery',
-      deName: 'Bäckerei',
+      deName: 'BГ¤ckerei',
       deSlug: 'baeckerei',
       deDesc: 'Frisches Brot und Backwaren',
     },
@@ -194,23 +190,23 @@ async function main() {
       name: 'Beverages',
       slug: 'beverages',
       icon: 'beverages',
-      deName: 'Getränke',
+      deName: 'GetrГ¤nke',
       deSlug: 'getraenke',
-      deDesc: 'Erfrischende Getränke und Säfte',
+      deDesc: 'Erfrischende GetrГ¤nke und SГ¤fte',
     },
     {
       name: 'Seafood',
       slug: 'seafood',
       icon: 'seafood',
-      deName: 'Meeresfrüchte',
+      deName: 'MeeresfrГјchte',
       deSlug: 'meeresfruechte',
-      deDesc: 'Frischer Fisch und Meeresfrüchte',
+      deDesc: 'Frischer Fisch und MeeresfrГјchte',
     },
     {
       name: 'Frozen',
       slug: 'frozen',
       icon: 'frozen',
-      deName: 'Tiefkühlkost',
+      deName: 'TiefkГјhlkost',
       deSlug: 'tiefkuehlkost',
       deDesc: 'Gefrorene Lebensmittel',
     },
@@ -234,9 +230,9 @@ async function main() {
       name: 'Sweets',
       slug: 'sweets',
       icon: 'sweets',
-      deName: 'Süßigkeiten',
+      deName: 'SГјГџigkeiten',
       deSlug: 'suessigkeiten',
-      deDesc: 'Leckere Süßigkeiten und Desserts',
+      deDesc: 'Leckere SГјГџigkeiten und Desserts',
     },
     {
       name: 'Canned',
@@ -250,9 +246,9 @@ async function main() {
       name: 'Sauces',
       slug: 'sauces',
       icon: 'sauces',
-      deName: 'Soßen',
+      deName: 'SoГџen',
       deSlug: 'sossen',
-      deDesc: 'Verschiedene Soßen und Dressings',
+      deDesc: 'Verschiedene SoГџen und Dressings',
     },
     {
       name: 'Snacks',
@@ -266,17 +262,17 @@ async function main() {
       name: 'Nuts',
       slug: 'nuts',
       icon: 'nuts',
-      deName: 'Nüsse',
+      deName: 'NГјsse',
       deSlug: 'nuesse',
-      deDesc: 'Gesunde Nüsse und Kerne',
+      deDesc: 'Gesunde NГјsse und Kerne',
     },
     {
       name: 'Spices',
       slug: 'spices',
       icon: 'spices',
-      deName: 'Gewürze',
+      deName: 'GewГјrze',
       deSlug: 'gewuerze',
-      deDesc: 'Aromatische Gewürze und Kräuter',
+      deDesc: 'Aromatische GewГјrze und KrГ¤uter',
     },
     {
       name: 'Household',
@@ -284,7 +280,7 @@ async function main() {
       icon: 'household',
       deName: 'Haushalt',
       deSlug: 'haushalt',
-      deDesc: 'Produkte für den täglichen Haushalt',
+      deDesc: 'Produkte fГјr den tГ¤glichen Haushalt',
     },
   ];
 
@@ -303,8 +299,6 @@ async function main() {
       },
     });
     categoryMap[c.slug] = category;
-
-    // Add German translation if available
     if (c.deName) {
       await prisma.categoryTranslation.upsert({
         where: { categoryId_locale: { categoryId: category.id, locale: 'de' } },
@@ -321,12 +315,11 @@ async function main() {
   }
 
   const subCategoriesData = [
-    // Fruits
     {
       parentSlug: 'fruits',
       name: 'Citrus',
       slug: 'citrus',
-      deName: 'Zitrusfrüchte',
+      deName: 'ZitrusfrГјchte',
       deSlug: 'zitrusfruechte',
       deDesc: 'Orangen, Zitronen und mehr',
     },
@@ -342,17 +335,15 @@ async function main() {
       parentSlug: 'fruits',
       name: 'Tropical Fruits',
       slug: 'tropical-fruits',
-      deName: 'Tropische Früchte',
+      deName: 'Tropische FrГјchte',
       deSlug: 'tropische-fruechte',
       deDesc: 'Bananen, Mangos und Ananas',
     },
-
-    // Vegetables
     {
       parentSlug: 'vegetables',
       name: 'Leafy Greens',
       slug: 'leafy-greens',
-      deName: 'Blattgemüse',
+      deName: 'BlattgemГјse',
       deSlug: 'blattgemuese',
       deDesc: 'Salat, Spinat und Kohl',
     },
@@ -360,7 +351,7 @@ async function main() {
       parentSlug: 'vegetables',
       name: 'Root Vegetables',
       slug: 'root-vegetables',
-      deName: 'Wurzelgemüse',
+      deName: 'WurzelgemГјse',
       deSlug: 'wurzelgemuese',
       deDesc: 'Karotten, Kartoffeln und Zwiebeln',
     },
@@ -372,8 +363,6 @@ async function main() {
       deSlug: 'tomaten-paprika',
       deDesc: 'Frische Tomaten und Paprika',
     },
-
-    // Dairy
     {
       parentSlug: 'dairy',
       name: 'Milk & Cream',
@@ -386,9 +375,9 @@ async function main() {
       parentSlug: 'dairy',
       name: 'Cheese',
       slug: 'cheese',
-      deName: 'Käse',
+      deName: 'KГ¤se',
       deSlug: 'kaese',
-      deDesc: 'Schnittkäse, Weichkäse und Frischkäse',
+      deDesc: 'SchnittkГ¤se, WeichkГ¤se und FrischkГ¤se',
     },
     {
       parentSlug: 'dairy',
@@ -398,34 +387,30 @@ async function main() {
       deSlug: 'joghurt',
       deDesc: 'Natur- und Fruchtjoghurt',
     },
-
-    // Bakery
     {
       parentSlug: 'bakery',
       name: 'Bread',
       slug: 'bread',
       deName: 'Brot',
       deSlug: 'brot',
-      deDesc: 'Frisches Vollkorn- und Weißbrot',
+      deDesc: 'Frisches Vollkorn- und WeiГџbrot',
     },
     {
       parentSlug: 'bakery',
       name: 'Rolls',
       slug: 'rolls',
-      deName: 'Brötchen',
+      deName: 'BrГ¶tchen',
       deSlug: 'broetchen',
-      deDesc: 'Knusprige Brötchen und Semmeln',
+      deDesc: 'Knusprige BrГ¶tchen und Semmeln',
     },
     {
       parentSlug: 'bakery',
       name: 'Pastries',
       slug: 'pastries',
-      deName: 'Gebäck',
+      deName: 'GebГ¤ck',
       deSlug: 'gebaeck',
-      deDesc: 'Croissants, Kuchen und süßes Gebäck',
+      deDesc: 'Croissants, Kuchen und sГјГџes GebГ¤ck',
     },
-
-    // Beverages
     {
       parentSlug: 'beverages',
       name: 'Water',
@@ -438,20 +423,18 @@ async function main() {
       parentSlug: 'beverages',
       name: 'Juices',
       slug: 'juices',
-      deName: 'Säfte',
+      deName: 'SГ¤fte',
       deSlug: 'saefte',
-      deDesc: 'Fruchtsäfte und Smoothies',
+      deDesc: 'FruchtsГ¤fte und Smoothies',
     },
     {
       parentSlug: 'beverages',
       name: 'Soft Drinks',
       slug: 'soft-drinks',
-      deName: 'Erfrischungsgetränke',
+      deName: 'ErfrischungsgetrГ¤nke',
       deSlug: 'erfrischungsgetraenke',
       deDesc: 'Cola, Limonade und Eistee',
     },
-
-    // Seafood
     {
       parentSlug: 'seafood',
       name: 'Fish Fillet',
@@ -468,8 +451,6 @@ async function main() {
       deSlug: 'schalentiere',
       deDesc: 'Garnelen, Muscheln und Krabben',
     },
-
-    // Frozen
     {
       parentSlug: 'frozen',
       name: 'Ice Cream',
@@ -482,7 +463,7 @@ async function main() {
       parentSlug: 'frozen',
       name: 'Frozen Pizza',
       slug: 'frozen-pizza',
-      deName: 'Tiefkühlpizza',
+      deName: 'TiefkГјhlpizza',
       deSlug: 'tiefkuehlpizza',
       deDesc: 'Pizza und Fertiggerichte',
     },
@@ -490,12 +471,10 @@ async function main() {
       parentSlug: 'frozen',
       name: 'Frozen Veggies',
       slug: 'frozen-veggies',
-      deName: 'Tiefkühlgemüse',
+      deName: 'TiefkГјhlgemГјse',
       deSlug: 'tiefkuehlgemuese',
-      deDesc: 'Erbsen, Bohnen und Gemüsemischungen',
+      deDesc: 'Erbsen, Bohnen und GemГјsemischungen',
     },
-
-    // Grains
     {
       parentSlug: 'grains',
       name: 'Pasta',
@@ -516,19 +495,17 @@ async function main() {
       parentSlug: 'grains',
       name: 'Cereal',
       slug: 'cereal',
-      deName: 'Müsli',
+      deName: 'MГјsli',
       deSlug: 'muesli',
       deDesc: 'Cornflakes, Haferflocken und Granola',
     },
-
-    // Meat
     {
       parentSlug: 'meat',
       name: 'Poultry',
       slug: 'poultry',
-      deName: 'Geflügel',
+      deName: 'GeflГјgel',
       deSlug: 'gefluegel',
-      deDesc: 'Hähnchen und Pute',
+      deDesc: 'HГ¤hnchen und Pute',
     },
     {
       parentSlug: 'meat',
@@ -544,10 +521,8 @@ async function main() {
       slug: 'pork',
       deName: 'Schweinefleisch',
       deSlug: 'schweinefleisch',
-      deDesc: 'Schnitzel, Koteletts und Würstchen',
+      deDesc: 'Schnitzel, Koteletts und WГјrstchen',
     },
-
-    // Sweets
     {
       parentSlug: 'sweets',
       name: 'Chocolate',
@@ -562,7 +537,7 @@ async function main() {
       slug: 'cookies',
       deName: 'Kekse',
       deSlug: 'kekse',
-      deDesc: 'Butterkekse und Plätzchen',
+      deDesc: 'Butterkekse und PlГ¤tzchen',
     },
     {
       parentSlug: 'sweets',
@@ -570,15 +545,13 @@ async function main() {
       slug: 'gummies',
       deName: 'Fruchtgummi',
       deSlug: 'fruchtgummi',
-      deDesc: 'Gummibärchen und Lakritz',
+      deDesc: 'GummibГ¤rchen und Lakritz',
     },
-
-    // Canned
     {
       parentSlug: 'canned',
       name: 'Canned Vegetables',
       slug: 'canned-vegetables',
-      deName: 'Gemüsekonserven',
+      deName: 'GemГјsekonserven',
       deSlug: 'gemuesekonserven',
       deDesc: 'Mais, Erbsen und Bohnen in Dosen',
     },
@@ -588,28 +561,24 @@ async function main() {
       slug: 'soups',
       deName: 'Suppen',
       deSlug: 'suppen',
-      deDesc: 'Fertige Suppen und Eintöpfe',
+      deDesc: 'Fertige Suppen und EintГ¶pfe',
     },
-
-    // Sauces
     {
       parentSlug: 'sauces',
       name: 'Tomato Sauce',
       slug: 'tomato-sauce',
-      deName: 'Tomatensoße',
+      deName: 'TomatensoГџe',
       deSlug: 'tomaten-sosse',
-      deDesc: 'Soßen für Pasta und Pizza',
+      deDesc: 'SoГџen fГјr Pasta und Pizza',
     },
     {
       parentSlug: 'sauces',
       name: 'Oils & Vinegar',
       slug: 'oils-vinegar',
-      deName: 'Öl & Essig',
+      deName: 'Г–l & Essig',
       deSlug: 'oel-essig',
-      deDesc: 'Olivenöl, Sonnenblumenöl und Balsamico',
+      deDesc: 'OlivenГ¶l, SonnenblumenГ¶l und Balsamico',
     },
-
-    // Snacks
     {
       parentSlug: 'snacks',
       name: 'Chips',
@@ -624,17 +593,15 @@ async function main() {
       slug: 'crackers',
       deName: 'Cracker',
       deSlug: 'cracker',
-      deDesc: 'Salzgebäck und Cracker',
+      deDesc: 'SalzgebГ¤ck und Cracker',
     },
-
-    // Nuts
     {
       parentSlug: 'nuts',
       name: 'Almonds',
       slug: 'almonds',
       deName: 'Mandeln',
       deSlug: 'mandeln',
-      deDesc: 'Geröstete und naturbelassene Mandeln',
+      deDesc: 'GerГ¶stete und naturbelassene Mandeln',
     },
     {
       parentSlug: 'nuts',
@@ -644,33 +611,29 @@ async function main() {
       deSlug: 'nussmischungen',
       deDesc: 'Studentenfutter und Nuss-Mix',
     },
-
-    // Spices
     {
       parentSlug: 'spices',
       name: 'Salt & Pepper',
       slug: 'salt-pepper',
       deName: 'Salz & Pfeffer',
       deSlug: 'salz-pfeffer',
-      deDesc: 'Meersalz, Jodsalz und Pfefferkörner',
+      deDesc: 'Meersalz, Jodsalz und PfefferkГ¶rner',
     },
     {
       parentSlug: 'spices',
       name: 'Dried Herbs',
       slug: 'dried-herbs',
-      deName: 'Getrocknete Kräuter',
+      deName: 'Getrocknete KrГ¤uter',
       deSlug: 'getrocknete-kraeuter',
       deDesc: 'Oregano, Basilikum und Thymian',
     },
-
-    // Household
     {
       parentSlug: 'household',
       name: 'Cleaning Supplies',
       slug: 'cleaning-supplies',
       deName: 'Reinigungsmittel',
       deSlug: 'reinigungsmittel',
-      deDesc: 'Allesreiniger, Spülmittel und Schwämme',
+      deDesc: 'Allesreiniger, SpГјlmittel und SchwГ¤mme',
     },
     {
       parentSlug: 'household',
@@ -678,7 +641,7 @@ async function main() {
       slug: 'paper-goods',
       deName: 'Papierwaren',
       deSlug: 'papierwaren',
-      deDesc: 'Toilettenpapier, Küchenrollen und Servietten',
+      deDesc: 'Toilettenpapier, KГјchenrollen und Servietten',
     },
   ];
 
@@ -703,8 +666,6 @@ async function main() {
     });
 
     categoryMap[s.slug] = subcategory;
-
-    // DE translation
     await prisma.categoryTranslation.upsert({
       where: {
         categoryId_locale: {
@@ -726,42 +687,46 @@ async function main() {
   console.log('Created subcategories with German translations');
 
   console.log('Created categories with German translations');
-
-  // Create tags
   const tagsData = [
     {
       name: 'Organic',
       slug: 'organic',
+      deSlug: 'bio',
       description: 'Organically grown products',
       color: '#4CAF50',
     },
     {
       name: 'Local',
       slug: 'local',
+      deSlug: 'lokal',
       description: 'Locally sourced products',
       color: '#2196F3',
     },
     {
       name: 'Fresh',
       slug: 'fresh',
+      deSlug: 'frisch',
       description: 'Fresh and crisp products',
       color: '#FF9800',
     },
     {
       name: 'Premium',
       slug: 'premium',
+      deSlug: 'premium',
       description: 'Premium quality products',
       color: '#9C27B0',
     },
     {
       name: 'Seasonal',
       slug: 'seasonal',
+      deSlug: 'saisonal',
       description: 'Seasonal products',
       color: '#F44336',
     },
     {
       name: 'Healthy',
       slug: 'healthy',
+      deSlug: 'gesund',
       description: 'Healthy and nutritious products',
       color: '#8BC34A',
     },
@@ -770,14 +735,19 @@ async function main() {
   const tagMap = {};
 
   for (const t of tagsData) {
+    const { deSlug, ...tagData } = t;
     const tag = await prisma.tag.upsert({
       where: { slug: t.slug },
-      update: {},
-      create: { ...t, isActive: true },
+      update: {
+        name: tagData.name,
+        slug: tagData.slug,
+        description: tagData.description,
+        color: tagData.color,
+        isActive: true,
+      },
+      create: { ...tagData, isActive: true },
     });
     tagMap[t.slug] = tag;
-
-    // German translations
     const deMap = {
       Organic: 'Bio',
       Local: 'Lokal',
@@ -790,26 +760,29 @@ async function main() {
       Organic: 'Biologisch angebaute Produkte',
       Local: 'Lokal bezogene Produkte',
       Fresh: 'Frische und knusprige Produkte',
-      Premium: 'Premium-Qualitätsprodukte',
+      Premium: 'Premium-QualitГ¤tsprodukte',
       Seasonal: 'Saisonale Produkte',
       Healthy: 'Gesunde und nahrhafte Produkte',
     };
 
     await prisma.tagTranslation.upsert({
       where: { tagId_locale: { tagId: tag.id, locale: 'de' } },
-      update: {},
+      update: {
+        name: deMap[t.name],
+        slug: deSlug,
+        description: deDesc[t.name],
+      },
       create: {
         tagId: tag.id,
         locale: 'de',
         name: deMap[t.name],
+        slug: deSlug,
         description: deDesc[t.name],
       },
     });
   }
 
   console.log('Created tags with German translations');
-
-  // Create products
   const productsData = [
     {
       name: 'Blueberries',
@@ -819,7 +792,7 @@ async function main() {
       price: 60.0,
       oldPrice: 70.0,
       stock: 90,
-      categorySlug: 'berries', // Субкатегорія з списку
+      categorySlug: 'berries', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy', 'seasonal'],
       images: [
         {
@@ -834,7 +807,7 @@ async function main() {
         name: 'Blaubeeren',
         slug: 'blaubeeren',
         shortDescription: 'Frische und saftige Blaubeeren',
-        description: 'Perfekt für Frühstück oder Desserts',
+        description: 'Perfekt fГјr FrГјhstГјck oder Desserts',
       },
     },
     {
@@ -845,7 +818,7 @@ async function main() {
       price: 65.0,
       oldPrice: 75.0,
       stock: 80,
-      categorySlug: 'berries', // Субкатегорія з списку
+      categorySlug: 'berries', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'organic', 'seasonal'],
       images: [
         {
@@ -859,7 +832,7 @@ async function main() {
         locale: 'de',
         name: 'Himbeeren',
         slug: 'himbeeren',
-        shortDescription: 'Süße rote Himbeeren',
+        shortDescription: 'SГјГџe rote Himbeeren',
         description: 'Lokal angebaut und frisch',
       },
     },
@@ -871,7 +844,7 @@ async function main() {
       price: 35.0,
       oldPrice: 40.0,
       stock: 8,
-      categorySlug: 'vegetables', // Немає специфічної субкатегорії в списку, лишаємо головну
+      categorySlug: 'vegetables', // РќРµРјР°С” СЃРїРµС†РёС„С–С‡РЅРѕС— СЃСѓР±РєР°С‚РµРіРѕСЂС–С— РІ СЃРїРёСЃРєСѓ, Р»РёС€Р°С”РјРѕ РіРѕР»РѕРІРЅСѓ
       tags: ['fresh', 'healthy', 'local'],
       images: [
         {
@@ -885,8 +858,8 @@ async function main() {
         locale: 'de',
         name: 'Gurken',
         slug: 'gurken',
-        shortDescription: 'Frische grüne Gurken',
-        description: 'Knackige Gurken, perfekt für Salate',
+        shortDescription: 'Frische grГјne Gurken',
+        description: 'Knackige Gurken, perfekt fГјr Salate',
       },
     },
     {
@@ -897,7 +870,7 @@ async function main() {
       price: 40.0,
       oldPrice: 50.0,
       stock: 6,
-      categorySlug: 'tomatoes-peppers', // Субкатегорія з списку
+      categorySlug: 'tomatoes-peppers', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'organic', 'healthy'],
       images: [
         {
@@ -912,7 +885,7 @@ async function main() {
         name: 'Tomaten',
         slug: 'tomaten',
         shortDescription: 'Saftige rote Tomaten',
-        description: 'Frische Tomaten, ideal zum Kochen und für Salate',
+        description: 'Frische Tomaten, ideal zum Kochen und fГјr Salate',
       },
     },
     {
@@ -923,7 +896,7 @@ async function main() {
       price: 55.0,
       oldPrice: 65.0,
       stock: 1,
-      categorySlug: 'milk-cream', // Субкатегорія з списку
+      categorySlug: 'milk-cream', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'premium'],
       images: [
         {
@@ -949,7 +922,7 @@ async function main() {
       price: 75.0,
       oldPrice: 85.0,
       stock: 60,
-      categorySlug: 'cheese', // Субкатегорія з списку
+      categorySlug: 'cheese', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['premium', 'fresh'],
       images: [
         {
@@ -961,10 +934,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Mozzarella Käse',
+        name: 'Mozzarella KГ¤se',
         slug: 'mozzarella-kaese',
-        shortDescription: 'Weicher Mozzarella Käse',
-        description: 'Cremiger Mozzarella, ideal für Pizza und Salate',
+        shortDescription: 'Weicher Mozzarella KГ¤se',
+        description: 'Cremiger Mozzarella, ideal fГјr Pizza und Salate',
       },
     },
     {
@@ -975,7 +948,7 @@ async function main() {
       price: 80.0,
       oldPrice: 95.0,
       stock: 50,
-      categorySlug: 'tropical-fruits', // Субкатегорія з списку
+      categorySlug: 'tropical-fruits', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy', 'seasonal'],
       images: [
         {
@@ -989,8 +962,8 @@ async function main() {
         locale: 'de',
         name: 'Ananas',
         slug: 'ananas',
-        shortDescription: 'Süße tropische Ananas',
-        description: 'Saftige Ananas, perfekt für Desserts und Smoothies',
+        shortDescription: 'SГјГџe tropische Ananas',
+        description: 'Saftige Ananas, perfekt fГјr Desserts und Smoothies',
       },
     },
     {
@@ -1001,7 +974,7 @@ async function main() {
       price: 90.0,
       oldPrice: 100.0,
       stock: 4,
-      categorySlug: 'tropical-fruits', // Субкатегорія з списку
+      categorySlug: 'tropical-fruits', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'premium', 'seasonal'],
       images: [
         {
@@ -1016,7 +989,7 @@ async function main() {
         name: 'Mango',
         slug: 'mango',
         shortDescription: 'Reife saftige Mango',
-        description: 'Süße Mango, perfekt für Smoothies und Desserts',
+        description: 'SГјГџe Mango, perfekt fГјr Smoothies und Desserts',
       },
     },
     {
@@ -1027,7 +1000,7 @@ async function main() {
       price: 45.0,
       oldPrice: 55.0,
       stock: 100,
-      categorySlug: 'tomatoes-peppers', // Субкатегорія з списку
+      categorySlug: 'tomatoes-peppers', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy'],
       images: [
         {
@@ -1042,7 +1015,7 @@ async function main() {
         name: 'Paprika',
         slug: 'paprika',
         shortDescription: 'Frische bunte Paprika',
-        description: 'Knackige Paprika, perfekt zum Kochen und für Salate',
+        description: 'Knackige Paprika, perfekt zum Kochen und fГјr Salate',
       },
     },
     {
@@ -1053,7 +1026,7 @@ async function main() {
       price: 50.0,
       oldPrice: 60.0,
       stock: 1,
-      categorySlug: 'cheese', // Підходить до субкатегорії Käse
+      categorySlug: 'cheese', // РџС–РґС…РѕРґРёС‚СЊ РґРѕ СЃСѓР±РєР°С‚РµРіРѕСЂС–С— KГ¤se
       tags: ['fresh', 'healthy'],
       images: [
         {
@@ -1065,10 +1038,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Hüttenkäse',
+        name: 'HГјttenkГ¤se',
         slug: 'huettenkaese',
-        shortDescription: 'Weicher und cremiger Hüttenkäse',
-        description: 'Fettarmer Hüttenkäse, ideal für gesunde Mahlzeiten',
+        shortDescription: 'Weicher und cremiger HГјttenkГ¤se',
+        description: 'Fettarmer HГјttenkГ¤se, ideal fГјr gesunde Mahlzeiten',
       },
     },
     {
@@ -1079,7 +1052,7 @@ async function main() {
       price: 50.0,
       oldPrice: 60.0,
       stock: 120,
-      categorySlug: 'fruits', // В списку немає субкатегорії для яблук, лишаємо головну
+      categorySlug: 'fruits', // Р’ СЃРїРёСЃРєСѓ РЅРµРјР°С” СЃСѓР±РєР°С‚РµРіРѕСЂС–С— РґР»СЏ СЏР±Р»СѓРє, Р»РёС€Р°С”РјРѕ РіРѕР»РѕРІРЅСѓ
       tags: ['fresh', 'healthy'],
       images: [
         {
@@ -1091,10 +1064,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Rote Äpfel',
+        name: 'Rote Г„pfel',
         slug: 'rote-aepfel',
-        shortDescription: 'Knackige und süße rote Äpfel',
-        description: 'Knackige und süße rote Äpfel, perfekt für Snacks',
+        shortDescription: 'Knackige und sГјГџe rote Г„pfel',
+        description: 'Knackige und sГјГџe rote Г„pfel, perfekt fГјr Snacks',
       },
     },
     {
@@ -1105,7 +1078,7 @@ async function main() {
       price: 30.0,
       oldPrice: 0,
       stock: 200,
-      categorySlug: 'tropical-fruits', // Субкатегорія з списку
+      categorySlug: 'tropical-fruits', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy', 'local'],
       images: [
         {
@@ -1120,7 +1093,7 @@ async function main() {
         name: 'Bananen',
         slug: 'bananen',
         shortDescription: 'Reife gelbe Bananen',
-        description: 'Süße und reife Bananen, ideal für Smoothies',
+        description: 'SГјГџe und reife Bananen, ideal fГјr Smoothies',
       },
     },
     {
@@ -1131,7 +1104,7 @@ async function main() {
       price: 25.0,
       oldPrice: 30.0,
       stock: 3,
-      categorySlug: 'root-vegetables', // Субкатегорія з списку
+      categorySlug: 'root-vegetables', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'organic', 'local'],
       images: [
         {
@@ -1157,7 +1130,7 @@ async function main() {
       price: 40.0,
       oldPrice: 50.0,
       stock: 80,
-      categorySlug: 'vegetables', // В списку немає підходящої субкатегорії, лишаємо головну
+      categorySlug: 'vegetables', // Р’ СЃРїРёСЃРєСѓ РЅРµРјР°С” РїС–РґС…РѕРґСЏС‰РѕС— СЃСѓР±РєР°С‚РµРіРѕСЂС–С—, Р»РёС€Р°С”РјРѕ РіРѕР»РѕРІРЅСѓ
       tags: ['fresh', 'healthy'],
       images: [
         {
@@ -1171,8 +1144,8 @@ async function main() {
         locale: 'de',
         name: 'Brokkoli',
         slug: 'brokkoli',
-        shortDescription: 'Grüne Brokkoli-Röschen',
-        description: 'Frischer Brokkoli, ideal für Salate und Kochen',
+        shortDescription: 'GrГјne Brokkoli-RГ¶schen',
+        description: 'Frischer Brokkoli, ideal fГјr Salate und Kochen',
       },
     },
     {
@@ -1183,7 +1156,7 @@ async function main() {
       price: 20.0,
       oldPrice: 25.0,
       stock: 7,
-      categorySlug: 'milk-cream', // Субкатегорія з списку
+      categorySlug: 'milk-cream', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'local', 'healthy'],
       images: [
         {
@@ -1198,7 +1171,7 @@ async function main() {
         name: 'Milch',
         slug: 'milch',
         shortDescription: 'Frische Vollmilch',
-        description: 'Frische Vollmilch von lokalen Bauernhöfen',
+        description: 'Frische Vollmilch von lokalen BauernhГ¶fen',
       },
     },
     {
@@ -1209,7 +1182,7 @@ async function main() {
       price: 70.0,
       oldPrice: 90.0,
       stock: 60,
-      categorySlug: 'cheese', // Субкатегорія з списку
+      categorySlug: 'cheese', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['premium', 'healthy'],
       images: [
         {
@@ -1221,10 +1194,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Cheddar Käse',
+        name: 'Cheddar KГ¤se',
         slug: 'cheddar-kaese',
-        shortDescription: 'Gereifter Cheddar Käse',
-        description: 'Reicher und aromatischer gereifter Cheddar Käse',
+        shortDescription: 'Gereifter Cheddar KГ¤se',
+        description: 'Reicher und aromatischer gereifter Cheddar KГ¤se',
       },
     },
     {
@@ -1235,7 +1208,7 @@ async function main() {
       price: 90.0,
       oldPrice: 110.0,
       stock: 70,
-      categorySlug: 'almonds', // Субкатегорія з списку (в розділі Nuts)
+      categorySlug: 'almonds', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ (РІ СЂРѕР·РґС–Р»С– Nuts)
       tags: ['organic', 'healthy', 'premium'],
       images: [
         {
@@ -1250,7 +1223,7 @@ async function main() {
         name: 'Mandeln',
         slug: 'mandeln',
         shortDescription: 'Knackige Mandeln',
-        description: 'Frische und knackige Mandeln, perfekt für Snacks',
+        description: 'Frische und knackige Mandeln, perfekt fГјr Snacks',
       },
     },
     {
@@ -1261,7 +1234,7 @@ async function main() {
       price: 35.0,
       oldPrice: 45.0,
       stock: 90,
-      categorySlug: 'leafy-greens', // Субкатегорія з списку
+      categorySlug: 'leafy-greens', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy', 'organic'],
       images: [
         {
@@ -1275,8 +1248,8 @@ async function main() {
         locale: 'de',
         name: 'Spinat',
         slug: 'spinat',
-        shortDescription: 'Frischer grüner Spinat',
-        description: 'Blattspinat, reich an Nährstoffen',
+        shortDescription: 'Frischer grГјner Spinat',
+        description: 'Blattspinat, reich an NГ¤hrstoffen',
       },
     },
     {
@@ -1287,7 +1260,7 @@ async function main() {
       price: 55.0,
       oldPrice: 65.0,
       stock: 50,
-      categorySlug: 'juices', // Субкатегорія з списку
+      categorySlug: 'juices', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy', 'local'],
       images: [
         {
@@ -1302,7 +1275,7 @@ async function main() {
         name: 'Orangensaft',
         slug: 'orangensaft',
         shortDescription: 'Frisch gepresster Orangensaft',
-        description: '100% natürlicher Orangensaft ohne Zuckerzusatz',
+        description: '100% natГјrlicher Orangensaft ohne Zuckerzusatz',
       },
     },
     {
@@ -1313,7 +1286,7 @@ async function main() {
       price: 45.0,
       oldPrice: 55.0,
       stock: 80,
-      categorySlug: 'yogurt', // Субкатегорія з списку
+      categorySlug: 'yogurt', // РЎСѓР±РєР°С‚РµРіРѕСЂС–СЏ Р· СЃРїРёСЃРєСѓ
       tags: ['fresh', 'healthy', 'premium'],
       images: [
         {
@@ -1351,11 +1324,11 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Hähnchenbrust',
+        name: 'HГ¤hnchenbrust',
         slug: 'haehnchenbrust',
-        shortDescription: 'Frische Hähnchenbrust ohne Haut',
+        shortDescription: 'Frische HГ¤hnchenbrust ohne Haut',
         description:
-          'Hochwertiges Geflügelfleisch, perfekt zum Grillen oder für Salate',
+          'Hochwertiges GeflГјgelfleisch, perfekt zum Grillen oder fГјr Salate',
       },
     },
     {
@@ -1381,11 +1354,9 @@ async function main() {
         name: 'Rindersteak',
         slug: 'rindersteak',
         shortDescription: 'Premium-Rindersteak',
-        description: 'Zartes und saftiges Rindersteak von lokalen Bauernhöfen',
+        description: 'Zartes und saftiges Rindersteak von lokalen BauernhГ¶fen',
       },
     },
-
-    // BAKERY
     {
       name: 'Whole Grain Bread',
       slug: 'whole-grain-bread',
@@ -1438,8 +1409,6 @@ async function main() {
         description: 'Traditionelles Buttercroissant mit goldener Kruste',
       },
     },
-
-    // SEAFOOD
     {
       name: 'Salmon Fillet',
       slug: 'salmon-fillet',
@@ -1488,12 +1457,10 @@ async function main() {
         locale: 'de',
         name: 'Riesengarnelen',
         slug: 'riesengarnelen',
-        shortDescription: 'Große geschälte Riesengarnelen',
-        description: 'Köstliche Garnelen, ideal für Pasta und Pfannengerichte',
+        shortDescription: 'GroГџe geschГ¤lte Riesengarnelen',
+        description: 'KГ¶stliche Garnelen, ideal fГјr Pasta und Pfannengerichte',
       },
     },
-
-    // GRAINS
     {
       name: 'Spaghetti Pasta',
       slug: 'spaghetti-pasta',
@@ -1542,12 +1509,10 @@ async function main() {
         locale: 'de',
         name: 'Basmati-Reis',
         slug: 'basmati-reis',
-        shortDescription: 'Langmähniges aromatischer Reis',
-        description: 'Hochwertiger Basmati-Reis, perfekt für Currys',
+        shortDescription: 'LangmГ¤hniges aromatischer Reis',
+        description: 'Hochwertiger Basmati-Reis, perfekt fГјr Currys',
       },
     },
-
-    // SWEETS
     {
       name: 'Dark Chocolate',
       slug: 'dark-chocolate',
@@ -1574,8 +1539,6 @@ async function main() {
         description: 'Reiche dunkle Schokolade aus hochwertigen Kakaobohnen',
       },
     },
-
-    // BEVERAGES
     {
       name: 'Mineral Water',
       slug: 'mineral-water',
@@ -1602,8 +1565,6 @@ async function main() {
         description: 'Frisches Mineralwasser aus Alpenquellen',
       },
     },
-
-    // FROZEN
     {
       name: 'Frozen Peas',
       slug: 'frozen-peas',
@@ -1624,15 +1585,13 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Tiefkühl-Erbsen',
+        name: 'TiefkГјhl-Erbsen',
         slug: 'tiefkuehl-erbsen',
-        shortDescription: 'Gartenfrische Tiefkühl-Erbsen',
+        shortDescription: 'Gartenfrische TiefkГјhl-Erbsen',
         description:
-          'Süße Gartenerbsen, schockgefrostet, um Nährstoffe zu erhalten',
+          'SГјГџe Gartenerbsen, schockgefrostet, um NГ¤hrstoffe zu erhalten',
       },
     },
-
-    // SNACKS
     {
       name: 'Potato Chips',
       slug: 'potato-chips',
@@ -1656,11 +1615,9 @@ async function main() {
         name: 'Kartoffelchips',
         slug: 'kartoffelchips',
         shortDescription: 'Klassisch gesalzene Kartoffelchips',
-        description: 'Knusprige Kartoffelchips, mit Meersalz gewürzt',
+        description: 'Knusprige Kartoffelchips, mit Meersalz gewГјrzt',
       },
     },
-
-    // NUTS
     {
       name: 'Walnuts',
       slug: 'walnuts',
@@ -1669,7 +1626,7 @@ async function main() {
       price: 110.0,
       oldPrice: 130.0,
       stock: 40,
-      categorySlug: 'nuts', // Головна категорія, бо субкатегорії 'walnuts' немає
+      categorySlug: 'nuts', // Р“РѕР»РѕРІРЅР° РєР°С‚РµРіРѕСЂС–СЏ, Р±Рѕ СЃСѓР±РєР°С‚РµРіРѕСЂС–С— 'walnuts' РЅРµРјР°С”
       tags: ['healthy', 'nuts'],
       images: [
         {
@@ -1681,14 +1638,12 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Walnüsse',
+        name: 'WalnГјsse',
         slug: 'walnuesse',
-        shortDescription: 'Geschälte Walnusshälften',
+        shortDescription: 'GeschГ¤lte WalnusshГ¤lften',
         description: 'Reich an Omega-3, perfekt zum Backen und Naschen',
       },
     },
-
-    // SAUCES
     {
       name: 'Olive Oil',
       slug: 'olive-oil',
@@ -1709,15 +1664,13 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Olivenöl',
+        name: 'OlivenГ¶l',
         slug: 'olivenoel',
-        shortDescription: 'Natives Olivenöl Extra',
+        shortDescription: 'Natives OlivenГ¶l Extra',
         description:
-          'Natives Olivenöl Extra aus der ersten Kaltpressung aus Spanien',
+          'Natives OlivenГ¶l Extra aus der ersten Kaltpressung aus Spanien',
       },
     },
-
-    // FRUITS (Citrus)
     {
       name: 'Lemons',
       slug: 'lemons',
@@ -1744,8 +1697,6 @@ async function main() {
         description: 'Spritzige und frische Zitronen, reich an Vitamin C',
       },
     },
-
-    // SPICES
     {
       name: 'Black Pepper',
       slug: 'black-pepper',
@@ -1769,11 +1720,9 @@ async function main() {
         name: 'Schwarzer Pfeffer',
         slug: 'schwarzer-pfeffer',
         shortDescription: 'Gemahlener schwarzer Pfeffer',
-        description: 'Aromatischer gemahlener schwarzer Pfeffer zum Würzen',
+        description: 'Aromatischer gemahlener schwarzer Pfeffer zum WГјrzen',
       },
     },
-
-    // HOUSEHOLD
     {
       name: 'Dish Soap',
       slug: 'dish-soap',
@@ -1794,11 +1743,11 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Spülmittel',
+        name: 'SpГјlmittel',
         slug: 'spuelmittel',
-        shortDescription: 'Spülmittel mit Zitronenduft',
+        shortDescription: 'SpГјlmittel mit Zitronenduft',
         description:
-          'Stark gegen Fett, sanft zu den Händen mit frischem Zitronenduft',
+          'Stark gegen Fett, sanft zu den HГ¤nden mit frischem Zitronenduft',
       },
     },
     {
@@ -1821,14 +1770,12 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Küchenrollen',
+        name: 'KГјchenrollen',
         slug: 'kuechenrollen',
-        shortDescription: 'Saugfähige Küchenrollen',
-        description: '2-lagige saugfähige Küchenrollen für den Küchengebrauch',
+        shortDescription: 'SaugfГ¤hige KГјchenrollen',
+        description: '2-lagige saugfГ¤hige KГјchenrollen fГјr den KГјchengebrauch',
       },
     },
-
-    // VEGETABLES (Leafy)
     {
       name: 'Iceberg Lettuce',
       slug: 'iceberg-lettuce',
@@ -1853,11 +1800,9 @@ async function main() {
         slug: 'eisbergsalat',
         shortDescription: 'Knackiger Eisbergsalat',
         description:
-          'Frischer und knackiger Salat, ideal für Burger und Salate',
+          'Frischer und knackiger Salat, ideal fГјr Burger und Salate',
       },
     },
-
-    // CANNED
     {
       name: 'Canned Sweet Corn',
       slug: 'canned-sweet-corn',
@@ -1880,12 +1825,11 @@ async function main() {
         locale: 'de',
         name: 'Maiskonserve',
         slug: 'maiskonserve',
-        shortDescription: 'Süßer Mais in Salzlake',
+        shortDescription: 'SГјГџer Mais in Salzlake',
         description:
-          'Natürlich süße Maiskörner, perfekt für Salate und Beilagen',
+          'NatГјrlich sГјГџe MaiskГ¶rner, perfekt fГјr Salate und Beilagen',
       },
     },
-    // FRUITS & VEGETABLES
     {
       name: 'Grapefruit',
       slug: 'grapefruit',
@@ -1909,7 +1853,7 @@ async function main() {
         name: 'Grapefruit',
         slug: 'grapefruit',
         shortDescription: 'Spritzige rote Grapefruit',
-        description: 'Perfekt ausbalancierte süß-bittere Zitrusfrucht',
+        description: 'Perfekt ausbalancierte sГјГџ-bittere Zitrusfrucht',
       },
     },
     {
@@ -1935,7 +1879,7 @@ async function main() {
         name: 'Radieschen',
         slug: 'radieschen',
         shortDescription: 'Knackige rote Radieschen',
-        description: 'Kleine, würzige Radieschen, perfekt für Frühlingssalate',
+        description: 'Kleine, wГјrzige Radieschen, perfekt fГјr FrГјhlingssalate',
       },
     },
     {
@@ -1962,11 +1906,9 @@ async function main() {
         slug: 'rotkohl',
         shortDescription: 'Frischer Rotkohlkopf',
         description:
-          'Knackiger Rotkohl, ideal für Krautsalat oder zum Einlegen',
+          'Knackiger Rotkohl, ideal fГјr Krautsalat oder zum Einlegen',
       },
     },
-
-    // DAIRY & CHEESE
     {
       name: 'Camembert Cheese',
       slug: 'camembert-cheese',
@@ -1991,7 +1933,7 @@ async function main() {
         slug: 'camembert',
         shortDescription: 'Weicher cremiger Camembert',
         description:
-          'Weichkäse nach französischer Art mit mildem, erdigen Geschmack',
+          'WeichkГ¤se nach franzГ¶sischer Art mit mildem, erdigen Geschmack',
       },
     },
     {
@@ -2017,11 +1959,9 @@ async function main() {
         name: 'Schmand',
         slug: 'schmand',
         shortDescription: 'Frischer 15% Fett Schmand',
-        description: 'Cremiger Schmand, perfekt für Dressings und Suppen',
+        description: 'Cremiger Schmand, perfekt fГјr Dressings und Suppen',
       },
     },
-
-    // BAKERY
     {
       name: 'Pretzels',
       slug: 'pretzels',
@@ -2071,11 +2011,9 @@ async function main() {
         name: 'Blaubeer-Muffin',
         slug: 'blaubeer-muffin',
         shortDescription: 'Weicher Muffin mit Beeren',
-        description: 'Süßer Muffin, gebacken mit frischen Blaubeeren',
+        description: 'SГјГџer Muffin, gebacken mit frischen Blaubeeren',
       },
     },
-
-    // MEAT
     {
       name: 'Minced Beef',
       slug: 'minced-beef',
@@ -2100,7 +2038,7 @@ async function main() {
         slug: 'rinderhackfleisch',
         shortDescription: 'Frisches mageres Rinderhack',
         description:
-          'Rinderhackfleisch, perfekt für Burger oder Bolognese-Sauce',
+          'Rinderhackfleisch, perfekt fГјr Burger oder Bolognese-Sauce',
       },
     },
     {
@@ -2125,12 +2063,10 @@ async function main() {
         locale: 'de',
         name: 'Bratwurst',
         slug: 'bratwurst',
-        shortDescription: 'Grillwürstchen vom Schwein',
-        description: 'Klassische Schweinswürstchen mit traditionellen Gewürzen',
+        shortDescription: 'GrillwГјrstchen vom Schwein',
+        description: 'Klassische SchweinswГјrstchen mit traditionellen GewГјrzen',
       },
     },
-
-    // SEAFOOD
     {
       name: 'Mussels',
       slug: 'mussels',
@@ -2154,11 +2090,9 @@ async function main() {
         name: 'Miesmuscheln',
         slug: 'miesmuscheln',
         shortDescription: 'Frische ganze Muscheln',
-        description: 'Frische Miesmuscheln, ideal für mediterrane Gerichte',
+        description: 'Frische Miesmuscheln, ideal fГјr mediterrane Gerichte',
       },
     },
-
-    // GRAINS & PANTRY
     {
       name: 'Penne Rigate',
       slug: 'penne-rigate',
@@ -2182,7 +2116,7 @@ async function main() {
         name: 'Penne Rigate',
         slug: 'penne-rigate',
         shortDescription: 'Gerippte Hartweizennudeln',
-        description: 'Klassische gerippte Nudeln для кращого утримання соусу',
+        description: 'Klassische gerippte Nudeln РґР»СЏ РєСЂР°С‰РѕРіРѕ СѓС‚СЂРёРјР°РЅРЅСЏ СЃРѕСѓСЃСѓ',
       },
     },
     {
@@ -2205,14 +2139,12 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Blütenhonig',
+        name: 'BlГјtenhonig',
         slug: 'bluetenhonig',
-        shortDescription: 'Natürlicher Blütenhonig',
-        description: 'Reiner Wildblütenhonig, süß und aromatisch',
+        shortDescription: 'NatГјrlicher BlГјtenhonig',
+        description: 'Reiner WildblГјtenhonig, sГјГџ und aromatisch',
       },
     },
-
-    // BEVERAGES
     {
       name: 'Green Tea',
       slug: 'green-tea',
@@ -2233,11 +2165,11 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Grüner Tee',
+        name: 'GrГјner Tee',
         slug: 'gruener-tee',
-        shortDescription: 'Bio-Grüntee-Beutel',
+        shortDescription: 'Bio-GrГјntee-Beutel',
         description:
-          'Erfrischender grüner Tee mit antioxidativen Eigenschaften',
+          'Erfrischender grГјner Tee mit antioxidativen Eigenschaften',
       },
     },
     {
@@ -2263,11 +2195,9 @@ async function main() {
         name: 'Eistee Pfirsich',
         slug: 'eistee-pfirsich',
         shortDescription: 'Erfrischender Pfirsich-Eistee',
-        description: 'Süßes Eistee-Getränk mit natürlichem Pfirsicharoma',
+        description: 'SГјГџes Eistee-GetrГ¤nk mit natГјrlichem Pfirsicharoma',
       },
     },
-
-    // FROZEN
     {
       name: 'Frozen Strawberries',
       slug: 'frozen-strawberries',
@@ -2288,15 +2218,13 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Tiefkühl-Erdbeeren',
+        name: 'TiefkГјhl-Erdbeeren',
         slug: 'tiefkuehl-erdbeeren',
         shortDescription: 'Ganze gefrorene Erdbeeren',
         description:
-          'Perfekt für Smoothies, Desserts und Backen das ganze Jahr über',
+          'Perfekt fГјr Smoothies, Desserts und Backen das ganze Jahr Гјber',
       },
     },
-
-    // SNACKS
     {
       name: 'Salted Peanuts',
       slug: 'salted-peanuts',
@@ -2317,10 +2245,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Gesalzene Erdnüsse',
+        name: 'Gesalzene ErdnГјsse',
         slug: 'gesalzene-erdnuesse',
-        shortDescription: 'Geröstete gesalzene Erdnüsse',
-        description: 'Klassisch geröstete Erdnüsse mit Meersalzwürze',
+        shortDescription: 'GerГ¶stete gesalzene ErdnГјsse',
+        description: 'Klassisch gerГ¶stete ErdnГјsse mit MeersalzwГјrze',
       },
     },
     {
@@ -2349,8 +2277,6 @@ async function main() {
         description: 'Dreieckige Maischips, perfekt zum Dippen in Salsa',
       },
     },
-
-    // SAUCES & CONDIMENTS
     {
       name: 'Balsamic Vinegar',
       slug: 'balsamic-vinegar',
@@ -2404,8 +2330,6 @@ async function main() {
           'Reiche Mayonnaise hergestellt aus Eiern aus Freilandhaltung',
       },
     },
-
-    // NUTS
     {
       name: 'Pistachios',
       slug: 'pistachios',
@@ -2428,12 +2352,10 @@ async function main() {
         locale: 'de',
         name: 'Pistazien',
         slug: 'pistazien',
-        shortDescription: 'Geröstete und gesalzene Pistazien',
-        description: 'Premium-Pistazien in der Schale, perfekt geröstet',
+        shortDescription: 'GerГ¶stete und gesalzene Pistazien',
+        description: 'Premium-Pistazien in der Schale, perfekt gerГ¶stet',
       },
     },
-
-    // SPICES
     {
       name: 'Paprika Powder',
       slug: 'paprika-powder',
@@ -2456,12 +2378,10 @@ async function main() {
         locale: 'de',
         name: 'Paprikapulver',
         slug: 'paprikapulver',
-        shortDescription: 'Süßes geräuchertes Paprika',
-        description: 'Gemahlenes edelsüßes Paprika mit mildem Raucharoma',
+        shortDescription: 'SГјГџes gerГ¤uchertes Paprika',
+        description: 'Gemahlenes edelsГјГџes Paprika mit mildem Raucharoma',
       },
     },
-
-    // HOUSEHOLD
     {
       name: 'Laundry Detergent',
       slug: 'laundry-detergent',
@@ -2484,8 +2404,8 @@ async function main() {
         locale: 'de',
         name: 'Waschmittel',
         slug: 'waschmittel',
-        shortDescription: 'Flüssigwaschmittel',
-        description: 'Effektives Waschmittel für bunte und weiße Kleidung',
+        shortDescription: 'FlГјssigwaschmittel',
+        description: 'Effektives Waschmittel fГјr bunte und weiГџe Kleidung',
       },
     },
     {
@@ -2510,12 +2430,10 @@ async function main() {
         locale: 'de',
         name: 'Schwamm-Set',
         slug: 'schwamm-set',
-        shortDescription: 'Reinigungsschwämme 3er-Pack',
-        description: 'Langlebige Schwämme für Küche und Haushalt',
+        shortDescription: 'ReinigungsschwГ¤mme 3er-Pack',
+        description: 'Langlebige SchwГ¤mme fГјr KГјche und Haushalt',
       },
     },
-
-    // CANNED
     {
       name: 'Canned Tuna',
       slug: 'canned-tuna',
@@ -2538,9 +2456,9 @@ async function main() {
         locale: 'de',
         name: 'Thunfischdose',
         slug: 'thunfischdose',
-        shortDescription: 'Thunfischstücke in Sonnenblumenöl',
+        shortDescription: 'ThunfischstГјcke in SonnenblumenГ¶l',
         description:
-          'Verzehrfertige Thunfischstücke, perfekt für schnelle Salate',
+          'Verzehrfertige ThunfischstГјcke, perfekt fГјr schnelle Salate',
       },
     },
     {
@@ -2570,8 +2488,6 @@ async function main() {
           'Warme und wohltuende Tomatensuppe in der praktischen Dose',
       },
     },
-
-    // ADDITIONAL FRUITS/VEG
     {
       name: 'Pear',
       slug: 'pear',
@@ -2594,7 +2510,7 @@ async function main() {
         locale: 'de',
         name: 'Birne',
         slug: 'birne',
-        shortDescription: 'Süße Conference-Birne',
+        shortDescription: 'SГјГџe Conference-Birne',
         description: 'Saftige und weiche Birne, ballaststoffreich',
       },
     },
@@ -2620,8 +2536,8 @@ async function main() {
         locale: 'de',
         name: 'Zucchini',
         slug: 'zucchini',
-        shortDescription: 'Frische grüne Zucchini',
-        description: 'Junge und zarte Zucchini, perfekt zum Rösten',
+        shortDescription: 'Frische grГјne Zucchini',
+        description: 'Junge und zarte Zucchini, perfekt zum RГ¶sten',
       },
     },
     {
@@ -2646,8 +2562,8 @@ async function main() {
         locale: 'de',
         name: 'Walnusskerne',
         slug: 'walnusskerne',
-        shortDescription: 'Natürliche Walnusshälften',
-        description: 'Rohe Walnusshälften, gut für die Herzgesundheit',
+        shortDescription: 'NatГјrliche WalnusshГ¤lften',
+        description: 'Rohe WalnusshГ¤lften, gut fГјr die Herzgesundheit',
       },
     },
     {
@@ -2674,7 +2590,7 @@ async function main() {
         slug: 'popcorn',
         shortDescription: 'Mikrowellen-Salzpopcorn',
         description:
-          'Klassisches gesalzenes Popcorn im Kino-Stil für die Mikrowelle',
+          'Klassisches gesalzenes Popcorn im Kino-Stil fГјr die Mikrowelle',
       },
     },
     {
@@ -2727,7 +2643,7 @@ async function main() {
         name: 'San Marzano Tomaten',
         slug: 'san-marzano-tomaten-premium',
         shortDescription: 'Lange fleischige italienische Tomaten',
-        description: 'Die besten Tomaten für authentische Saucen.',
+        description: 'Die besten Tomaten fГјr authentische Saucen.',
       },
     },
     {
@@ -2754,7 +2670,7 @@ async function main() {
         name: 'Schoko-Habanero',
         slug: 'schoko-habanero-scharf',
         shortDescription: 'Extrascharfe Paprika',
-        description: 'Einzigartiger dunkelbrauner Chili mit extremer Schärfe.',
+        description: 'Einzigartiger dunkelbrauner Chili mit extremer SchГ¤rfe.',
       },
     },
     {
@@ -2780,8 +2696,8 @@ async function main() {
         locale: 'de',
         name: 'Gelbe Traubentomaten',
         slug: 'gelbe-traubentomaten-bio',
-        shortDescription: 'Süße mundgerechte gelbe Tomaten',
-        description: 'Natürlich süß und saftig.',
+        shortDescription: 'SГјГџe mundgerechte gelbe Tomaten',
+        description: 'NatГјrlich sГјГџ und saftig.',
       },
     },
     {
@@ -2808,7 +2724,7 @@ async function main() {
         name: 'Snack-Paprika Mix',
         slug: 'snack-paprika-mix',
         shortDescription: 'Kleine knackige Paprika',
-        description: 'Bunte Mini-Paprika, ideal für die Brotdose.',
+        description: 'Bunte Mini-Paprika, ideal fГјr die Brotdose.',
       },
     },
     {
@@ -2861,8 +2777,8 @@ async function main() {
         locale: 'de',
         name: 'Poblano-Chili',
         slug: 'poblano-chili-mild',
-        shortDescription: 'Große milde dunkelgrüne Chili',
-        description: 'Perfekt zum Füllen oder Rösten.',
+        shortDescription: 'GroГџe milde dunkelgrГјne Chili',
+        description: 'Perfekt zum FГјllen oder RГ¶sten.',
       },
     },
     {
@@ -2889,7 +2805,7 @@ async function main() {
         name: 'Tigerella-Tomaten',
         slug: 'tigerella-tomaten',
         shortDescription: 'Gestreifte dekorative Tomaten',
-        description: 'Wunderschöne rot-gelb gestreifte Tomaten.',
+        description: 'WunderschГ¶ne rot-gelb gestreifte Tomaten.',
       },
     },
     {
@@ -2915,8 +2831,8 @@ async function main() {
         locale: 'de',
         name: 'Spitzpaprika Rot',
         slug: 'spitzpaprika-rot-lang',
-        shortDescription: 'Süße rote Spitzpaprika',
-        description: 'Kapia-Stil, ideal zum Rösten.',
+        shortDescription: 'SГјГџe rote Spitzpaprika',
+        description: 'Kapia-Stil, ideal zum RГ¶sten.',
       },
     },
     {
@@ -2939,10 +2855,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Grüner Thai-Chili',
+        name: 'GrГјner Thai-Chili',
         slug: 'gruener-thai-chili',
-        shortDescription: 'Sehr scharfe kleine grüne Chilis',
-        description: 'Unverzichtbar für die asiatische Küche.',
+        shortDescription: 'Sehr scharfe kleine grГјne Chilis',
+        description: 'Unverzichtbar fГјr die asiatische KГјche.',
       },
     },
     {
@@ -2968,12 +2884,10 @@ async function main() {
         locale: 'de',
         name: 'Black Pearl Paprika',
         slug: 'black-pearl-paprika',
-        shortDescription: 'Dunkelviolette süße Paprika',
+        shortDescription: 'Dunkelviolette sГјГџe Paprika',
         description: 'Eine Gourmet-Sorte mit fast schwarzer Haut.',
       },
     },
-
-    // --- ROOT VEGETABLES (root-vegetables) ---
     {
       name: 'White Daikon',
       slug: 'daikon-radish-white-long',
@@ -2997,8 +2911,8 @@ async function main() {
         locale: 'de',
         name: 'Daikon-Rettich',
         slug: 'daikon-rettich-weiss',
-        shortDescription: 'Knackiger langer weißer Rettich',
-        description: 'Ein milder weißer Rettich für Salate.',
+        shortDescription: 'Knackiger langer weiГџer Rettich',
+        description: 'Ein milder weiГџer Rettich fГјr Salate.',
       },
     },
     {
@@ -3021,9 +2935,9 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Kohlrabi Grün',
+        name: 'Kohlrabi GrГјn',
         slug: 'kohlrabi-gruen-knackig',
-        shortDescription: 'Süßer und knackiger Kohlrabi',
+        shortDescription: 'SГјГџer und knackiger Kohlrabi',
         description: 'Viel Vitamin C, ideal zum Rohverzehr.',
       },
     },
@@ -3050,7 +2964,7 @@ async function main() {
         name: 'Rote Kartoffeln',
         slug: 'rote-kartoffeln-bio',
         shortDescription: 'Feste Kartoffeln mit roter Schale',
-        description: 'Ideal zum Kochen und für Kartoffelsalat.',
+        description: 'Ideal zum Kochen und fГјr Kartoffelsalat.',
       },
     },
     {
@@ -3077,7 +2991,7 @@ async function main() {
         name: 'Gelber Kurkuma',
         slug: 'gelber-kurkuma-frisch',
         shortDescription: 'Aromatische frische Kurkumawurzel',
-        description: 'Rohes Superfood für Säfte.',
+        description: 'Rohes Superfood fГјr SГ¤fte.',
       },
     },
     {
@@ -3104,7 +3018,7 @@ async function main() {
         name: 'Schwarzer Rettich',
         slug: 'schwarzer-rettich-winter',
         shortDescription: 'Traditioneller schwarzer Rettich',
-        description: 'Starker, würziger Geschmack.',
+        description: 'Starker, wГјrziger Geschmack.',
       },
     },
     {
@@ -3129,8 +3043,8 @@ async function main() {
         locale: 'de',
         name: 'Petersilienwurzel',
         slug: 'petersilienwurzel-bio',
-        shortDescription: 'Aromatische weiße Suppenwurzel',
-        description: 'Unverzichtbar für Gemüsebrühen.',
+        shortDescription: 'Aromatische weiГџe Suppenwurzel',
+        description: 'Unverzichtbar fГјr GemГјsebrГјhen.',
       },
     },
     {
@@ -3155,8 +3069,8 @@ async function main() {
         locale: 'de',
         name: 'Schalotten',
         slug: 'schalotten-gourmet',
-        shortDescription: 'Milde und süße kleine Schalotten',
-        description: 'Gourmet-Wahl für feine Saucen.',
+        shortDescription: 'Milde und sГјГџe kleine Schalotten',
+        description: 'Gourmet-Wahl fГјr feine Saucen.',
       },
     },
     {
@@ -3181,8 +3095,8 @@ async function main() {
         locale: 'de',
         name: 'Meerrettich',
         slug: 'meerrettich-wurzel',
-        shortDescription: 'Sehr scharfe weiße Wurzel',
-        description: 'Frisch gerieben für Saucen.',
+        shortDescription: 'Sehr scharfe weiГџe Wurzel',
+        description: 'Frisch gerieben fГјr Saucen.',
       },
     },
     {
@@ -3208,7 +3122,7 @@ async function main() {
         locale: 'de',
         name: 'Topinambur',
         slug: 'topinambur-bio',
-        shortDescription: 'Süße nussige Winterknolle',
+        shortDescription: 'SГјГџe nussige Winterknolle',
         description: 'Gesunde Alternative zu Kartoffeln.',
       },
     },
@@ -3233,14 +3147,12 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Sandmöhren',
+        name: 'SandmГ¶hren',
         slug: 'sandmoehren-premium',
-        shortDescription: 'Extra süße Sandmöhren',
-        description: 'Besondere Sorte für höchste Süße.',
+        shortDescription: 'Extra sГјГџe SandmГ¶hren',
+        description: 'Besondere Sorte fГјr hГ¶chste SГјГџe.',
       },
     },
-
-    // --- LEAFY GREENS (leafy-greens) ---
     {
       name: 'Curly Kale',
       slug: 'curly-kale-superfood-organic',
@@ -3262,9 +3174,9 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Grünkohl',
+        name: 'GrГјnkohl',
         slug: 'gruenkohl-bio',
-        shortDescription: 'Bio-Grünkohl',
+        shortDescription: 'Bio-GrГјnkohl',
         description: 'Das ultimative Superfood.',
       },
     },
@@ -3299,7 +3211,7 @@ async function main() {
       slug: 'lambs-lettuce-fresh-local',
       shortDescription: 'Tender nutty corn salad',
       description:
-        'Small dark green leaves with a unique nutty flavor. Also known as Lamb’s lettuce.',
+        'Small dark green leaves with a unique nutty flavor. Also known as LambвЂ™s lettuce.',
       price: 52.0,
       oldPrice: 60.0,
       stock: 40,
@@ -3318,7 +3230,7 @@ async function main() {
         name: 'Feldsalat',
         slug: 'feldsalat-lokal',
         shortDescription: 'Zarter nussiger Feldsalat',
-        description: 'Kleine dunkelgrüne Blätter.',
+        description: 'Kleine dunkelgrГјne BlГ¤tter.',
       },
     },
     {
@@ -3396,8 +3308,8 @@ async function main() {
         locale: 'de',
         name: 'Radicchio',
         slug: 'radicchio-frisch',
-        shortDescription: 'Kräftiger bitterer roter Salat',
-        description: 'Knackige rot-weiße Blätter.',
+        shortDescription: 'KrГ¤ftiger bitterer roter Salat',
+        description: 'Knackige rot-weiГџe BlГ¤tter.',
       },
     },
     {
@@ -3422,7 +3334,7 @@ async function main() {
         locale: 'de',
         name: 'Brunnenkresse',
         slug: 'brunnenkresse-frisch',
-        shortDescription: 'Pfeffrige kleine Blätter',
+        shortDescription: 'Pfeffrige kleine BlГ¤tter',
         description: 'Sehr hoher Vitamin-Gehalt.',
       },
     },
@@ -3430,7 +3342,7 @@ async function main() {
       name: 'Mustard Greens',
       slug: 'mustard-greens-spicy-leaf',
       shortDescription: 'Spicy pungent green leaves',
-      description: 'Adds a mustard-like heat to your salads and sautés.',
+      description: 'Adds a mustard-like heat to your salads and sautГ©s.',
       price: 48.0,
       oldPrice: 0,
       stock: 25,
@@ -3446,10 +3358,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Senfblätter',
+        name: 'SenfblГ¤tter',
         slug: 'senfblaetter-scharf',
-        shortDescription: 'Scharfe würzige Blätter',
-        description: 'Verleiht Salaten eine senfartige Schärfe.',
+        shortDescription: 'Scharfe wГјrzige BlГ¤tter',
+        description: 'Verleiht Salaten eine senfartige SchГ¤rfe.',
       },
     },
     {
@@ -3474,8 +3386,8 @@ async function main() {
         locale: 'de',
         name: 'Roter Mangold',
         slug: 'mangold-rot-bio',
-        shortDescription: 'Grüne Blätter mit roten Stielen',
-        description: 'Erdig und köstlich.',
+        shortDescription: 'GrГјne BlГ¤tter mit roten Stielen',
+        description: 'Erdig und kГ¶stlich.',
       },
     },
     {
@@ -3501,7 +3413,7 @@ async function main() {
         name: 'Mizuna Salat',
         slug: 'mizuna-salat',
         shortDescription: 'Milder japanischer Salat',
-        description: 'Dekorative japanische Blätter.',
+        description: 'Dekorative japanische BlГ¤tter.',
       },
     },
     {
@@ -3582,7 +3494,7 @@ async function main() {
         name: 'Cubanelle Paprika',
         slug: 'cubanelle-bratpaprika',
         shortDescription: 'Milde Paprika zum Braten',
-        description: 'Dünnhäutige Paprika, ideal für die Pfanne.',
+        description: 'DГјnnhГ¤utige Paprika, ideal fГјr die Pfanne.',
       },
     },
     {
@@ -3609,7 +3521,7 @@ async function main() {
         name: 'Kumato Tomate',
         slug: 'kumato-schwarz-premium',
         shortDescription: 'Dunkle saftige Gourmet-Tomate',
-        description: 'Außergewöhnlich süßer und intensiver Geschmack.',
+        description: 'AuГџergewГ¶hnlich sГјГџer und intensiver Geschmack.',
       },
     },
     {
@@ -3617,7 +3529,7 @@ async function main() {
       slug: 'serrano-chili-fresh-green',
       shortDescription: 'Spicy Mexican green chili',
       description:
-        'Hotter than jalapeños, perfect for making fresh pico de gallo salsa.',
+        'Hotter than jalapeГ±os, perfect for making fresh pico de gallo salsa.',
       price: 28.0,
       oldPrice: 35.0,
       stock: 180,
@@ -3636,7 +3548,7 @@ async function main() {
         name: 'Serrano Chili',
         slug: 'serrano-chili-frisch',
         shortDescription: 'Scharfer mexikanischer Chili',
-        description: 'Schärfer als Jalapeños, ideal für Salsas.',
+        description: 'SchГ¤rfer als JalapeГ±os, ideal fГјr Salsas.',
       },
     },
     {
@@ -3662,12 +3574,10 @@ async function main() {
         locale: 'de',
         name: 'Gelbe Spitzpaprika',
         slug: 'gelbe-spitzpaprika-suess',
-        shortDescription: 'Lange süße gelbe Paprika',
-        description: 'Sehr süß und knackig.',
+        shortDescription: 'Lange sГјГџe gelbe Paprika',
+        description: 'Sehr sГјГџ und knackig.',
       },
     },
-
-    // --- ROOT VEGETABLES (root-vegetables) ---
     {
       name: 'Rainbow Carrots',
       slug: 'rainbow-carrots-organic-mix',
@@ -3691,7 +3601,7 @@ async function main() {
         name: 'Regenbogenkarotten',
         slug: 'regenbogen-moehren-bio',
         shortDescription: 'Bunter Karotten-Mix',
-        description: 'Mischung aus violetten, gelben und weißen Karotten.',
+        description: 'Mischung aus violetten, gelben und weiГџen Karotten.',
       },
     },
     {
@@ -3717,8 +3627,8 @@ async function main() {
         locale: 'de',
         name: 'Roter Kohlrabi',
         slug: 'roter-kohlrabi-lokal',
-        shortDescription: 'Gemüse mit violetter Schale',
-        description: 'Milder, süßer Geschmack.',
+        shortDescription: 'GemГјse mit violetter Schale',
+        description: 'Milder, sГјГџer Geschmack.',
       },
     },
     {
@@ -3741,10 +3651,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Speiserübe',
+        name: 'SpeiserГјbe',
         slug: 'speiseruebe-frisch',
-        shortDescription: 'Klassische Mairübe',
-        description: 'Traditionelles Wurzelgemüse für Eintöpfe.',
+        shortDescription: 'Klassische MairГјbe',
+        description: 'Traditionelles WurzelgemГјse fГјr EintГ¶pfe.',
       },
     },
     {
@@ -3770,7 +3680,7 @@ async function main() {
         locale: 'de',
         name: 'Gelbe Bete',
         slug: 'gelbe-bete-bio',
-        shortDescription: 'Milde süße gelbe Bete',
+        shortDescription: 'Milde sГјГџe gelbe Bete',
         description: 'Weniger erdig als rote Bete.',
       },
     },
@@ -3795,10 +3705,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Steckrübe',
+        name: 'SteckrГјbe',
         slug: 'steckruebe-winter',
-        shortDescription: 'Robustes Winterwurzelgemüse',
-        description: 'Ideal zum Rösten oder für Eintöpfe.',
+        shortDescription: 'Robustes WinterwurzelgemГјse',
+        description: 'Ideal zum RГ¶sten oder fГјr EintГ¶pfe.',
       },
     },
     {
@@ -3823,12 +3733,10 @@ async function main() {
         locale: 'de',
         name: 'Yamswurzel',
         slug: 'yams-frisch',
-        shortDescription: 'Stärkehaltige Tropenwurzel',
+        shortDescription: 'StГ¤rkehaltige Tropenwurzel',
         description: 'Hervorragend zum Kochen oder Braten.',
       },
     },
-
-    // --- LEAFY GREENS (leafy-greens) ---
     {
       name: 'Lollo Bionda',
       slug: 'lollo-bionda-lettuce-green',
@@ -3851,7 +3759,7 @@ async function main() {
         locale: 'de',
         name: 'Lollo Bionda',
         slug: 'lollo-bionda-gruen',
-        shortDescription: 'Krauser grüner Blattsalat',
+        shortDescription: 'Krauser grГјner Blattsalat',
         description: 'Sehr dekorativ und mild im Geschmack.',
       },
     },
@@ -3878,7 +3786,7 @@ async function main() {
         locale: 'de',
         name: 'Eichblattsalat Rot',
         slug: 'eichblattsalat-rot-bio',
-        shortDescription: 'Burgunderfarbene Blätter',
+        shortDescription: 'Burgunderfarbene BlГ¤tter',
         description: 'Nussiger Geschmack.',
       },
     },
@@ -3905,7 +3813,7 @@ async function main() {
         locale: 'de',
         name: 'Tatsoi',
         slug: 'tatsoi-senf-gemuese',
-        shortDescription: 'Löffelförmiges Asia-Gemüse',
+        shortDescription: 'LГ¶ffelfГ¶rmiges Asia-GemГјse',
         description: 'Milder, buttriger Senfgeschmack.',
       },
     },
@@ -3932,8 +3840,8 @@ async function main() {
         locale: 'de',
         name: 'Sauerampfer',
         slug: 'sauerampfer-frisch',
-        shortDescription: 'Zitronig-saure Blätter',
-        description: 'Traditionell für Suppen verwendet.',
+        shortDescription: 'Zitronig-saure BlГ¤tter',
+        description: 'Traditionell fГјr Suppen verwendet.',
       },
     },
     {
@@ -3959,7 +3867,7 @@ async function main() {
         name: 'Rotschnitt-Spinat',
         slug: 'rotschnitt-spinat-besonder',
         shortDescription: 'Dekorativer Spinat',
-        description: 'Zarte Blätter mit roten Adern.',
+        description: 'Zarte BlГ¤tter mit roten Adern.',
       },
     },
     {
@@ -3983,14 +3891,12 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Löwenzahnsalat',
+        name: 'LГ¶wenzahnsalat',
         slug: 'loewenzahn-frisch-bio',
-        shortDescription: 'Nährstoffreiche bittere Blätter',
-        description: 'Geschätzt für Detox-Vorteile.',
+        shortDescription: 'NГ¤hrstoffreiche bittere BlГ¤tter',
+        description: 'GeschГ¤tzt fГјr Detox-Vorteile.',
       },
     },
-
-    // --- MIXED VEGETABLES (vegetables) ---
     {
       name: 'Brussels Sprouts',
       slug: 'brussels-sprouts-fresh-stalk',
@@ -4015,7 +3921,7 @@ async function main() {
         name: 'Rosenkohl',
         slug: 'rosenkohl-frisch',
         shortDescription: 'Kleine Kohlsprossen',
-        description: 'Hervorragend zum Rösten.',
+        description: 'Hervorragend zum RГ¶sten.',
       },
     },
     {
@@ -4039,10 +3945,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Artischocke Groß',
+        name: 'Artischocke GroГџ',
         slug: 'artischocke-premium',
-        shortDescription: 'Große grüne Artischocke',
-        description: 'Gourmet-Blütenknospe.',
+        shortDescription: 'GroГџe grГјne Artischocke',
+        description: 'Gourmet-BlГјtenknospe.',
       },
     },
     {
@@ -4068,8 +3974,8 @@ async function main() {
         locale: 'de',
         name: 'Zuckerschoten',
         slug: 'zuckerschoten-frisch',
-        shortDescription: 'Essbare süße Erbsen',
-        description: 'Knackig und süß.',
+        shortDescription: 'Essbare sГјГџe Erbsen',
+        description: 'Knackig und sГјГџ.',
       },
     },
     {
@@ -4090,13 +3996,13 @@ async function main() {
           isMain: true,
           order: 1,
         },
-      ], // Заглушка
+      ], // Р—Р°РіР»СѓС€РєР°
       translation: {
         locale: 'de',
-        name: 'Butternuss-Kürbis',
+        name: 'Butternuss-KГјrbis',
         slug: 'butternuss-kuerbis-bio',
-        shortDescription: 'Nussiger Winterkürbis',
-        description: 'Ideal für cremige Suppen.',
+        shortDescription: 'Nussiger WinterkГјrbis',
+        description: 'Ideal fГјr cremige Suppen.',
       },
     },
     {
@@ -4149,8 +4055,8 @@ async function main() {
         locale: 'de',
         name: 'Lauch',
         slug: 'lauch-frisch-lokal',
-        shortDescription: 'Milde Zwiebelgewächse',
-        description: 'Unverzichtbar für Suppen.',
+        shortDescription: 'Milde ZwiebelgewГ¤chse',
+        description: 'Unverzichtbar fГјr Suppen.',
       },
     },
     {
@@ -4203,8 +4109,8 @@ async function main() {
         locale: 'de',
         name: 'Wirsing',
         slug: 'wirsing-frisch',
-        shortDescription: 'Gekräuselter Kohlkopf',
-        description: 'Ideal für Kohlrouladen.',
+        shortDescription: 'GekrГ¤uselter Kohlkopf',
+        description: 'Ideal fГјr Kohlrouladen.',
       },
     },
     {
@@ -4227,10 +4133,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Weißer Spargel',
+        name: 'WeiГџer Spargel',
         slug: 'weisser-spargel-premium',
-        shortDescription: 'Zarter königlicher Spargel',
-        description: 'Das "weiße Gold" des Frühlings.',
+        shortDescription: 'Zarter kГ¶niglicher Spargel',
+        description: 'Das "weiГџe Gold" des FrГјhlings.',
       },
     },
     {
@@ -4282,8 +4188,8 @@ async function main() {
         locale: 'de',
         name: 'Johannisbeertomaten',
         slug: 'johannisbeertomaten-klein',
-        shortDescription: 'Erbsengroße Tomaten',
-        description: 'Unglaublich süß.',
+        shortDescription: 'ErbsengroГџe Tomaten',
+        description: 'Unglaublich sГјГџ.',
       },
     },
     {
@@ -4307,10 +4213,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Knoblauchgrün',
+        name: 'KnoblauchgrГјn',
         slug: 'knoblauchgruen-fruehling',
-        shortDescription: 'Milder grüner Knoblauch',
-        description: 'Nur im Frühling verfügbar.',
+        shortDescription: 'Milder grГјner Knoblauch',
+        description: 'Nur im FrГјhling verfГјgbar.',
       },
     },
     {
@@ -4363,7 +4269,7 @@ async function main() {
         locale: 'de',
         name: 'Ochsenherztomate',
         slug: 'ochsenherztomate-riesig',
-        shortDescription: 'Große herzförmige Tomate',
+        shortDescription: 'GroГџe herzfГ¶rmige Tomate',
         description: 'Fleischig und aromatisch mit wenigen Samen.',
       },
     },
@@ -4390,12 +4296,10 @@ async function main() {
         locale: 'de',
         name: 'Anaheim-Paprika',
         slug: 'anaheim-paprika-mild',
-        shortDescription: 'Milde lange grüne Paprika',
+        shortDescription: 'Milde lange grГјne Paprika',
         description: 'Vielseitige milde Chili.',
       },
     },
-
-    // --- ROOT VEGETABLES (root-vegetables) ---
     {
       name: 'Lotus Root',
       slug: 'lotus-root-exotic-fresh',
@@ -4444,9 +4348,9 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Gelbe Möhren',
+        name: 'Gelbe MГ¶hren',
         slug: 'gelbe-moehren-frisch',
-        shortDescription: 'Mild-süße gelbe Karotten',
+        shortDescription: 'Mild-sГјГџe gelbe Karotten',
         description: 'Alte Sorte mit leuchtend gelber Farbe.',
       },
     },
@@ -4474,17 +4378,15 @@ async function main() {
         name: 'Klettenwurzel',
         slug: 'klettenwurzel-gobo',
         shortDescription: 'Schlanke erdige Wurzel',
-        description: 'Bekannt aus der japanischen Küche.',
+        description: 'Bekannt aus der japanischen KГјche.',
       },
     },
-
-    // --- LEAFY GREENS (leafy-greens) ---
     {
       name: 'Microgreens Mix',
       slug: 'microgreens-mix-nutrient-box',
       shortDescription: 'Tiny nutrient-dense seedlings',
       description:
-        'Young vegetable greens that are approximately 1–3 inches tall, packed with vitamins.',
+        'Young vegetable greens that are approximately 1вЂ“3 inches tall, packed with vitamins.',
       price: 75.0,
       oldPrice: 90.0,
       stock: 40,
@@ -4502,8 +4404,8 @@ async function main() {
         locale: 'de',
         name: 'Microgreens-Mix',
         slug: 'microgreens-mix-naehrstoff',
-        shortDescription: 'Kleine nährstoffreiche Keimlinge',
-        description: 'Junges Gemüse voller Vitamine.',
+        shortDescription: 'Kleine nГ¤hrstoffreiche Keimlinge',
+        description: 'Junges GemГјse voller Vitamine.',
       },
     },
     {
@@ -4529,7 +4431,7 @@ async function main() {
         locale: 'de',
         name: 'Senfspinat',
         slug: 'senfspinat-komatsuna',
-        shortDescription: 'Mildes asiatisches Blattgemüse',
+        shortDescription: 'Mildes asiatisches BlattgemГјse',
         description: 'Geschmack zwischen Spinat und Senf.',
       },
     },
@@ -4554,14 +4456,12 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Chicorée Weiß',
+        name: 'ChicorГ©e WeiГџ',
         slug: 'chicoree-weiss-belgisch',
-        shortDescription: 'Knackige weiße Chicorée-Köpfe',
+        shortDescription: 'Knackige weiГџe ChicorГ©e-KГ¶pfe',
         description: 'Leicht bitterer Geschmack.',
       },
     },
-
-    // --- GENERAL VEGETABLES (vegetables) ---
     {
       name: 'Okra (Lady Fingers)',
       slug: 'okra-lady-fingers-fresh',
@@ -4585,8 +4485,8 @@ async function main() {
         locale: 'de',
         name: 'Okra',
         slug: 'okra-frisch',
-        shortDescription: 'Frische grüne Schoten',
-        description: 'Ideal für Eintöpfe oder zum Braten.',
+        shortDescription: 'Frische grГјne Schoten',
+        description: 'Ideal fГјr EintГ¶pfe oder zum Braten.',
       },
     },
     {
@@ -4612,8 +4512,8 @@ async function main() {
         locale: 'de',
         name: 'Bittermelone',
         slug: 'bittermelone-frisch',
-        shortDescription: 'Bitteres Heilgemüse',
-        description: 'Bekannt für gesundheitliche Vorteile.',
+        shortDescription: 'Bitteres HeilgemГјse',
+        description: 'Bekannt fГјr gesundheitliche Vorteile.',
       },
     },
     {
@@ -4638,8 +4538,8 @@ async function main() {
         locale: 'de',
         name: 'Pattisons',
         slug: 'pattison-kuerbis-mini',
-        shortDescription: 'Kleiner ufo-förmiger Kürbis',
-        description: 'Zarter Minikürbis zum Rösten.',
+        shortDescription: 'Kleiner ufo-fГ¶rmiger KГјrbis',
+        description: 'Zarter MinikГјrbis zum RГ¶sten.',
       },
     },
     {
@@ -4665,7 +4565,7 @@ async function main() {
         locale: 'de',
         name: 'Chayote',
         slug: 'chayote-frisch',
-        shortDescription: 'Milder birnenförmiger Kürbis',
+        shortDescription: 'Milder birnenfГ¶rmiger KГјrbis',
         description: 'Knackig und mild.',
       },
     },
@@ -4689,9 +4589,9 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Spaghettikürbis',
+        name: 'SpaghettikГјrbis',
         slug: 'spaghettikuerbis-gelb',
-        shortDescription: 'Nudelartiger gelber Kürbis',
+        shortDescription: 'Nudelartiger gelber KГјrbis',
         description: 'Fruchtfleisch wird wie Nudeln.',
       },
     },
@@ -4718,7 +4618,7 @@ async function main() {
         name: 'Bambussprossen',
         slug: 'bambussprossen-frisch',
         shortDescription: 'Knackige junge Bambustriebe',
-        description: 'Ideal für Pfannengerichte.',
+        description: 'Ideal fГјr Pfannengerichte.',
       },
     },
     {
@@ -4745,7 +4645,7 @@ async function main() {
         name: 'Lila Brokkoli',
         slug: 'lila-brokkoli-saisonal',
         shortDescription: 'Farbenfroher violetter Brokkoli',
-        description: 'Etwas süßer als grüner Brokkoli.',
+        description: 'Etwas sГјГџer als grГјner Brokkoli.',
       },
     },
     {
@@ -4753,7 +4653,7 @@ async function main() {
       slug: 'daikon-leafy-greens-fresh',
       shortDescription: 'Nutritious radish leaves',
       description:
-        'Edible green tops of the daikon radish, excellent for sautéing.',
+        'Edible green tops of the daikon radish, excellent for sautГ©ing.',
       price: 30.0,
       oldPrice: 0,
       stock: 50,
@@ -4769,10 +4669,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Rettichgrün',
+        name: 'RettichgrГјn',
         slug: 'rettichgruen-frisch',
-        shortDescription: 'Nährstoffreiche Rettichblätter',
-        description: 'Essbares Grün vom Daikon.',
+        shortDescription: 'NГ¤hrstoffreiche RettichblГ¤tter',
+        description: 'Essbares GrГјn vom Daikon.',
       },
     },
     {
@@ -4799,7 +4699,7 @@ async function main() {
         name: 'Kohlrabi-Microgreens',
         slug: 'kohlrabi-microgreens-frisch',
         shortDescription: 'Lebendige lila Microgreens',
-        description: 'Hochkonzentrierte Nährstoffe.',
+        description: 'Hochkonzentrierte NГ¤hrstoffe.',
       },
     },
     {
@@ -4850,8 +4750,8 @@ async function main() {
         locale: 'de',
         name: 'Minipastinaken',
         slug: 'minipastinaken-suess',
-        shortDescription: 'Süße zarte kleine Pastinaken',
-        description: 'Besonders süße Baby-Variante.',
+        shortDescription: 'SГјГџe zarte kleine Pastinaken',
+        description: 'Besonders sГјГџe Baby-Variante.',
       },
     },
     {
@@ -4878,7 +4778,7 @@ async function main() {
         name: 'Radicchio Castelfranco',
         slug: 'radicchio-castelfranco-premium',
         shortDescription: 'Gepunkteter Edelsalat',
-        description: 'Wunderschöne cremefarbene Blätter.',
+        description: 'WunderschГ¶ne cremefarbene BlГ¤tter.',
       },
     },
     {
@@ -4903,15 +4803,15 @@ async function main() {
         locale: 'de',
         name: 'Savoy-Spinat',
         slug: 'savoy-spinat-bio',
-        shortDescription: 'Dickblättriger Spinat',
-        description: 'Gekräuselte Blätter mit tiefem Aroma.',
+        shortDescription: 'DickblГ¤ttriger Spinat',
+        description: 'GekrГ¤uselte BlГ¤tter mit tiefem Aroma.',
       },
     },
     {
       name: 'Long White Onions',
-      slug: 'long-white-calçot-onions',
+      slug: 'long-white-calГ§ot-onions',
       shortDescription: 'Spanish-style grill onions',
-      description: 'Similar to Calçots, perfect for roasting on an open flame.',
+      description: 'Similar to CalГ§ots, perfect for roasting on an open flame.',
       price: 38.0,
       oldPrice: 45.0,
       stock: 110,
@@ -4927,10 +4827,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Calçot-Zwiebeln',
+        name: 'CalГ§ot-Zwiebeln',
         slug: 'calcots-zwiebeln-frisch',
-        shortDescription: 'Lange weiße Grillzwiebeln',
-        description: 'Ideal zum Grillen über offener Flamme.',
+        shortDescription: 'Lange weiГџe Grillzwiebeln',
+        description: 'Ideal zum Grillen Гјber offener Flamme.',
       },
     },
     {
@@ -4954,9 +4854,9 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Roter Chicorée',
+        name: 'Roter ChicorГ©e',
         slug: 'roter-chicoree-saisonal',
-        shortDescription: 'Kräftig-bitterer Wintersalat',
+        shortDescription: 'KrГ¤ftig-bitterer Wintersalat',
         description: 'Tiefrote Farbe.',
       },
     },
@@ -4965,7 +4865,7 @@ async function main() {
       slug: 'mixed-chili-peppers-heat-box',
       shortDescription: 'Assorted hot peppers box',
       description:
-        'A mix of jalapeño, habanero, and serrano for all levels of heat.',
+        'A mix of jalapeГ±o, habanero, and serrano for all levels of heat.',
       price: 65.0,
       oldPrice: 80.0,
       stock: 90,
@@ -4987,7 +4887,7 @@ async function main() {
         name: 'Chili-Mix Box',
         slug: 'chili-mix-box-scharf',
         shortDescription: 'Sortierte scharfe Paprika',
-        description: 'Mischung verschiedener Schärfegrade.',
+        description: 'Mischung verschiedener SchГ¤rfegrade.',
       },
     },
     {
@@ -5016,7 +4916,7 @@ async function main() {
         name: 'Thai-Aubergine Lila',
         slug: 'thai-aubergine-lila-mini',
         shortDescription: 'Runde kleine lila Aubergine',
-        description: 'Perfekt für asiatische Currys.',
+        description: 'Perfekt fГјr asiatische Currys.',
       },
     },
     {
@@ -5045,7 +4945,7 @@ async function main() {
         locale: 'de',
         name: 'Wildspargel',
         slug: 'wildspargel-wald-frisch',
-        shortDescription: 'Dünne Waldspargelstangen',
+        shortDescription: 'DГјnne Waldspargelstangen',
         description: 'Intensiv im Geschmack.',
       },
     },
@@ -5069,10 +4969,10 @@ async function main() {
       ],
       translation: {
         locale: 'de',
-        name: 'Goldrübe',
+        name: 'GoldrГјbe',
         slug: 'goldruebe-frisch-suess',
-        shortDescription: 'Gelbfleischige süße Rübe',
-        description: 'Milder als die klassische Mairübe.',
+        shortDescription: 'Gelbfleischige sГјГџe RГјbe',
+        description: 'Milder als die klassische MairГјbe.',
       },
     },
     {
@@ -5097,8 +4997,8 @@ async function main() {
         locale: 'de',
         name: 'Roter Blattspinat',
         slug: 'roter-blattspinat-oriental',
-        shortDescription: 'Großer orientalischer Spinat',
-        description: 'Dicke Blätter mit roter Mitte.',
+        shortDescription: 'GroГџer orientalischer Spinat',
+        description: 'Dicke BlГ¤tter mit roter Mitte.',
       },
     },
     {
@@ -5128,8 +5028,6 @@ async function main() {
       },
     },
   ];
-
-  // Create products with proper category references and tag connections
   for (const p of productsData) {
     const product = await prisma.product.create({
       data: {
@@ -5140,8 +5038,6 @@ async function main() {
         price: p.price,
         oldPrice: p.oldPrice || null,
         stock: p.stock,
-
-        // 👇 NEW FIELDS FOR FACETS
         brand: p.brand || 'Generic',
         country: p.country || 'Unknown',
         isActive: p.isActive ?? true,
@@ -5159,8 +5055,6 @@ async function main() {
         },
       },
     });
-
-    // Create product translation
     await prisma.productTranslation.create({
       data: {
         productId: product.id,

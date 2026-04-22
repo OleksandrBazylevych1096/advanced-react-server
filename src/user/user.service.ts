@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from '../auth/dto/register.dto';
 import { GoogleAuthDto } from '../auth/dto/google-auth.dto';
 import * as bcrypt from 'bcrypt';
+import { User } from '@prisma/client';
 
 @Injectable()
 export class UserService {
@@ -22,12 +23,15 @@ export class UserService {
         email: registerDto.email?.trim() || null,
         phone: registerDto.phone?.trim() || null,
         password: hashedPassword,
+        passwordHash: hashedPassword,
       },
       select: {
         id: true,
         email: true,
         phone: true,
         isVerified: true,
+        isEmailVerified: true,
+        isPhoneVerified: true,
       },
     });
 
@@ -43,6 +47,7 @@ export class UserService {
         data: {
           email: googleAuthDto.email,
           isVerified: true,
+          isEmailVerified: true,
           verifiedAt: new Date(),
         },
       });
@@ -55,6 +60,7 @@ export class UserService {
           data: {
             googleId: googleAuthDto.googleId,
             isVerified: true,
+            isEmailVerified: true,
             verifiedAt: new Date(),
           },
         });
@@ -64,6 +70,7 @@ export class UserService {
             googleId: googleAuthDto.googleId,
             email: googleAuthDto.email,
             isVerified: true,
+            isEmailVerified: true,
             verifiedAt: new Date(),
           },
         });
@@ -102,14 +109,29 @@ export class UserService {
   }
 
   async findOne(id: string) {
-    return await this.prisma.user.findUnique({ where: { id } });
+    return await this.prisma.user.findUnique({
+      where: { id },
+      include: {
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+      },
+    });
   }
 
   async verifyUser(userId: string) {
+    const existingUser = await this.findOne(userId);
+    if (!existingUser) {
+      throw new BadRequestException({ code: 'USER_NOT_FOUND' });
+    }
     return await this.prisma.user.update({
       where: { id: userId },
       data: {
         isVerified: true,
+        isEmailVerified: existingUser.email ? true : existingUser.isEmailVerified,
+        isPhoneVerified: existingUser.phone ? true : existingUser.isPhoneVerified,
         verifiedAt: new Date(),
       },
       select: {
@@ -117,8 +139,22 @@ export class UserService {
         email: true,
         phone: true,
         isVerified: true,
+        isEmailVerified: true,
+        isPhoneVerified: true,
         verifiedAt: true,
       },
     });
+  }
+
+  getPasswordHash(user: Pick<User, 'passwordHash' | 'password'>) {
+    return user.passwordHash ?? user.password ?? null;
+  }
+
+  isUserVerified(
+    user: Pick<User, 'isVerified' | 'email' | 'phone' | 'isEmailVerified' | 'isPhoneVerified'>,
+  ) {
+    const emailVerified = user.email ? Boolean(user.isEmailVerified ?? user.isVerified) : true;
+    const phoneVerified = user.phone ? Boolean(user.isPhoneVerified ?? user.isVerified) : true;
+    return emailVerified && phoneVerified;
   }
 }

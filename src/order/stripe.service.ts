@@ -1,16 +1,10 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Checkout } from 'node_modules/stripe/cjs/resources/Checkout/Sessions';
-import { Event } from 'node_modules/stripe/cjs/resources/Events';
-import { PaymentIntentRetrieveParams } from 'node_modules/stripe/cjs/resources/PaymentIntents';
-import { PromotionCode } from 'node_modules/stripe/cjs/resources/PromotionCodes';
-import { MetadataParam } from 'node_modules/stripe/esm/shared';
 import Stripe from 'stripe';
-import {Stripe as StripeType} from 'stripe';
 
 @Injectable()
 export class StripeService {
-  private readonly stripe: StripeType | null;
+  private readonly stripe: InstanceType<typeof Stripe> | null;
   private readonly webhookSecret: string | null;
 
   constructor(private readonly configService: ConfigService) {
@@ -30,7 +24,7 @@ export class StripeService {
   async createPaymentIntent(params: {
     amountInMinor: number;
     currency: string;
-    metadata: MetadataParam;
+    metadata: Record<string, string>;
     idempotencyKey?: string;
   }) {
     if (!this.stripe) {
@@ -56,12 +50,12 @@ export class StripeService {
 
   async createCheckoutSession(params: {
     amountInMinor: number;
-    lineItems?: Checkout.SessionCreateParams.LineItem[];
+    lineItems?: Array<Record<string, unknown>>;
     currency: string;
-    locale?: Checkout.SessionCreateParams.Locale;
+    locale?: string;
     successUrl: string;
     cancelUrl: string;
-    metadata: MetadataParam;
+    metadata: Record<string, string>;
     customerEmail?: string;
     orderLabel?: string;
     promotionCodeId?: string;
@@ -74,7 +68,7 @@ export class StripeService {
 
     return this.stripe.checkout.sessions.create({
       mode: 'payment',
-      locale: params.locale,
+      locale: params.locale as never,
       adaptive_pricing: {
         enabled: false,
       },
@@ -116,7 +110,7 @@ export class StripeService {
 
   async findActivePromotionCodeByCode(
     code: string,
-  ): Promise<PromotionCode | null> {
+  ) {
     if (!this.stripe) {
       throw new InternalServerErrorException(
         'Stripe is not configured. Set STRIPE_SECRET_KEY.',
@@ -140,7 +134,7 @@ export class StripeService {
 
   async retrievePaymentIntent(
     paymentIntentId: string,
-    params?: PaymentIntentRetrieveParams,
+    params?: Record<string, unknown>,
   ) {
     if (!this.stripe) {
       throw new InternalServerErrorException(
@@ -153,7 +147,7 @@ export class StripeService {
 
   async retrieveCheckoutSession(
     checkoutSessionId: string,
-    params?: Checkout.SessionRetrieveParams,
+    params?: Record<string, unknown>,
   ) {
     if (!this.stripe) {
       throw new InternalServerErrorException(
@@ -184,7 +178,7 @@ export class StripeService {
     return this.stripe.paymentIntents.cancel(paymentIntentId);
   }
 
-  constructWebhookEvent(payload: Buffer, signature: string): Event {
+  constructWebhookEvent(payload: Buffer, signature: string) {
     if (!this.stripe) {
       throw new InternalServerErrorException(
         'Stripe is not configured. Set STRIPE_SECRET_KEY.',
@@ -220,7 +214,7 @@ export class StripeService {
     name: string;
     description?: string;
     images?: string[];
-    metadata?: MetadataParam;
+    metadata?: Record<string, string>;
   }) {
     if (!this.stripe) {
       throw new InternalServerErrorException(
@@ -240,7 +234,7 @@ export class StripeService {
     productId: string;
     currency: string;
     unitAmountMinor: number;
-    metadata?: MetadataParam;
+    metadata?: Record<string, string>;
   }) {
     if (!this.stripe) {
       throw new InternalServerErrorException(

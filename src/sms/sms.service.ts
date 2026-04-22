@@ -1,9 +1,10 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Vonage } from '@vonage/server-sdk';
 
 @Injectable()
 export class SmsService {
+  private readonly logger = new Logger(SmsService.name);
   private vonage: Vonage;
 
   constructor(private configService: ConfigService) {
@@ -27,11 +28,14 @@ export class SmsService {
       const [message] = response.messages;
 
       if (message.status !== '0') {
-        console.error('Vonage SMS error:', message['error-text']);
+        this.logger.error(`Vonage SMS error: ${message['error-text']}`);
         throw new BadRequestException({ code: 'SMS_DELIVERY_FAILED' });
       }
     } catch (error) {
-      console.error('Vonage send error:', error);
+      this.logger.error(
+        'Vonage send error',
+        error instanceof Error ? error.stack : undefined,
+      );
       if (error instanceof BadRequestException) {
         throw error;
       }

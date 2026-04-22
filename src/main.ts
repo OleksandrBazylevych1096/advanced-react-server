@@ -1,12 +1,16 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import * as express from 'express';
 import { join } from 'path';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+  const logger = new Logger('Bootstrap');
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -15,15 +19,20 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   app.use(cookieParser());
   app.use('/static', express.static(join(__dirname, '..', 'static')));
 
-  if ((process.env.TRUST_PROXY || '').toLowerCase() === 'true') {
+  if ((configService.get<string>('TRUST_PROXY') || '').toLowerCase() === 'true') {
     (app as any).set('trust proxy', 1);
   }
 
-  const corsOrigins = (process.env.CORS_ORIGINS || process.env.FRONTEND_URL || '')
+  const corsOrigins = (
+    configService.get<string>('CORS_ORIGINS') ||
+    configService.get<string>('FRONTEND_URL') ||
+    ''
+  )
     .split(',')
     .map((v) => v.trim())
     .filter(Boolean);
@@ -40,11 +49,9 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  const port = process.env.PORT || 3000;
+  const port = configService.get<number>('PORT') || 3000;
   await app.listen(port);
-  console.log(join(__dirname, '..', 'static'));
-
-  console.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`Application is running on: http://localhost:${port}`);
 }
 
 bootstrap();

@@ -118,7 +118,6 @@ export class CategoryController {
           resolvedLocale,
         );
       } catch {
-        // Fallback to slug lookup.
       }
     }
     return this.categoryService.getBreadcrumbsBySlug(value, resolvedLocale);

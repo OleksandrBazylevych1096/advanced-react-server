@@ -13,6 +13,7 @@ import {
   Patch,
   HttpException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -30,12 +31,20 @@ import type { Request, Response } from 'express';
 import { GoogleOAuthGuard } from './guards/google-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GetUserId } from 'src/decorators/get-user-id.decorator';
+import { isMfaChallengeResponse } from './auth.types';
+import { RateLimit } from '../common/rate-limit.decorator';
+import { RateLimitGuard } from '../common/rate-limit.guard';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
+  ) {}
 
   @Post('register')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ keyPrefix: 'auth:register', ttlSeconds: 60, limit: 5 })
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
@@ -67,13 +76,15 @@ export class AuthController {
   }
 
   @Post('login')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ keyPrefix: 'auth:login', ttlSeconds: 60, limit: 10 })
   async login(
     @Body() loginDto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const loginResponse = await this.authService.login(loginDto, req);
-    if ('requiresTwoFactor' in loginResponse) {
+    if (isMfaChallengeResponse(loginResponse)) {
       return loginResponse;
     }
     const { user, tokens } = loginResponse;
@@ -91,16 +102,16 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ keyPrefix: 'auth:refresh', ttlSeconds: 60, limit: 20 })
   async refreshTokens(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const incomingRefreshToken = this.authService.extractRefreshTokenFromRequest(req);
-    const incomingAccessToken = this.authService.extractAccessTokenFromRequest(req);
     try {
       const { user, tokens } = await this.authService.refreshTokens(
         incomingRefreshToken,
-        incomingAccessToken,
         req,
       );
       res.cookie(
@@ -153,8 +164,8 @@ export class AuthController {
       const payload = await this.authService.verifyGoogleCode(code, req);
       const params = new URLSearchParams();
 
-      if ('requiresTwoFactor' in (payload as any)) {
-        const challenge = payload as any;
+      if (isMfaChallengeResponse(payload)) {
+        const challenge = payload;
         params.set('requiresTwoFactor', 'true');
         params.set('mfaToken', challenge.mfaToken);
         params.set('mfaTokenExpiresAt', challenge.mfaTokenExpiresAt);
@@ -162,7 +173,7 @@ export class AuthController {
           params.append('availableMethods', method);
         }
       } else {
-        const { user, tokens } = payload as any;
+        const { user, tokens } = payload;
         res.cookie(
           'access_token',
           tokens.accessToken,
@@ -202,10 +213,10 @@ export class AuthController {
     }
 
     const payload = await this.authService.verifyGoogleCode(code, req);
-    if ('requiresTwoFactor' in (payload as any)) {
+    if (isMfaChallengeResponse(payload)) {
       return payload;
     }
-    const { user, tokens } = payload as any;
+    const { user, tokens } = payload;
     res.cookie(
       'access_token',
       tokens.accessToken,
@@ -220,19 +231,23 @@ export class AuthController {
   }
 
   @Post('otp/send')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ keyPrefix: 'auth:otp-send', ttlSeconds: 60, limit: 10 })
   async sendOtp(@Body() dto: SendOtpDto, @Req() req: Request) {
     return this.authService.sendOtpCompat(dto, req);
   }
 
   @Post('otp/verify')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ keyPrefix: 'auth:otp-verify', ttlSeconds: 60, limit: 20 })
   async verifyOtp(
     @Body() dto: VerifyOtpDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
     const data = await this.authService.verifyOtpCompat(dto, req);
-    if ('accessToken' in (data as any) && 'user' in (data as any)) {
-      const session = data as any;
+    if ('accessToken' in data && 'user' in data) {
+      const session = data;
       res.cookie(
         'access_token',
         session.accessToken,
@@ -245,24 +260,25 @@ export class AuthController {
           this.authService.getRefreshCookieOptions(),
         );
       }
-      delete session._refreshToken;
+      const { _refreshToken: _discarded, ...sanitized } = session;
+      return sanitized;
     }
     return data;
   }
 
   @Post('2fa/setup')
   @UseGuards(JwtAuthGuard)
-  async setupTwoFactor() {
-    return this.authService.setupTwoFactorCompat();
+  async setupTwoFactor(@GetUserId() userId: string) {
+    return this.authService.setupTwoFactorCompat(userId);
   }
 
   @Post('2fa/enable')
   @UseGuards(JwtAuthGuard)
   async enableTwoFactor(
     @GetUserId() userId: string,
-    @Body() _dto: Enable2faDto,
+    @Body() dto: Enable2faDto,
   ) {
-    return this.authService.enableTwoFactorCompat(userId);
+    return this.authService.enableTwoFactorCompat(userId, dto.code);
   }
 
   @Post('2fa/disable')
@@ -281,7 +297,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const session = await this.authService.verifyTwoFactorCompat(dto, req);
-    const response = session as any;
+    const response = session;
     res.cookie(
       'access_token',
       response.accessToken,
@@ -293,7 +309,8 @@ export class AuthController {
         response._refreshToken,
         this.authService.getRefreshCookieOptions(),
       );
-      delete response._refreshToken;
+      const { _refreshToken: _discarded, ...sanitized } = response;
+      return sanitized;
     }
     return response;
   }
@@ -340,6 +357,8 @@ export class AuthController {
   }
 
   @Post('forgot-password')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ keyPrefix: 'auth:forgot-password', ttlSeconds: 60, limit: 5 })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPasswordCompat(dto.identifier);
   }
@@ -350,8 +369,11 @@ export class AuthController {
   }
 
   private buildFrontendOAuthRedirectUrl(params: URLSearchParams): string {
-    const frontendBase = (process.env.FRONTEND_URL || '').replace(/\/+$/, '');
-    const oauthPath = process.env.FRONTEND_OAUTH_PATH || '/oauth';
+    const frontendBase = (this.configService.get<string>('FRONTEND_URL') || '').replace(
+      /\/+$/,
+      '',
+    );
+    const oauthPath = this.configService.get<string>('FRONTEND_OAUTH_PATH') || '/oauth';
     const normalizedPath = oauthPath.startsWith('/')
       ? oauthPath
       : `/${oauthPath}`;

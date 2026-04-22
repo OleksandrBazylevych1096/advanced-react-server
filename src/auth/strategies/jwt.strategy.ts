@@ -4,11 +4,12 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from '../../user/user.service';
 import type { Request } from 'express';
+import { AuthTokenService } from '../token.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(
-    private configService: ConfigService,
+    private readonly tokenService: AuthTokenService,
     private userService: UserService,
   ) {
     super({
@@ -19,14 +20,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
-      secretOrKey: configService.get('JWT_SECRET'),
+      secretOrKey: tokenService.getAccessSecret(),
     });
   }
 
   async validate(payload: any) {
+    if (payload?.tokenType !== 'access') {
+      throw new UnauthorizedException({ code: 'ACCESS_TOKEN_INVALID' });
+    }
     const user = await this.userService.findOne(payload.sub);
     if (!user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
     }
     return user;
   }

@@ -21,10 +21,12 @@ import { ShippingAddressModule } from './shipping-address/shipping-address.modul
 import { CheckoutModule } from './checkout/checkout.module';
 import { DeliverySelectionModule } from './delivery-selection/delivery-selection.module';
 import { RedisModule } from './redis/redis.module';
+import { HealthModule } from './health/health.module';
+import { validateEnvironment } from './config/env.validation';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateEnvironment }),
     PrismaModule,
     UserModule,
     AuthModule,
@@ -44,6 +46,7 @@ import { RedisModule } from './redis/redis.module';
     CheckoutModule,
     DeliverySelectionModule,
     RedisModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],

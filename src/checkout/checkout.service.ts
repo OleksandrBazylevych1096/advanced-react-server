@@ -8,6 +8,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   CheckoutSession,
   CheckoutSessionStatus,
@@ -22,10 +23,6 @@ import { EmailService } from '../email/email.service';
 import { StripeService } from '../order/stripe.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentSessionDto } from './dto/create-payment-session.dto';
-import { MetadataParam } from 'node_modules/stripe/cjs/shared';
-import { Checkout } from 'node_modules/stripe/esm/resources/Checkout';
-import { Event } from 'node_modules/stripe/cjs/resources/Events';
-import { PaymentIntent } from 'node_modules/stripe/cjs/resources/PaymentIntents';
 
 type SnapshotItem = {
   productId: string;
@@ -79,6 +76,44 @@ type PaymentCardSnapshot = {
   last4: string | null;
 };
 
+type StripeEvent = ReturnType<StripeService['constructWebhookEvent']>;
+type StripeChargeLike = {
+  refunded?: boolean;
+  amount_refunded?: number;
+  payment_method_details?: {
+    type?: string;
+    card?: {
+      brand?: string | null;
+      last4?: string | null;
+    } | null;
+  } | null;
+} | null;
+
+type StripePaymentIntentLike = {
+  id: string;
+  status: string;
+  client_secret: string | null;
+  last_payment_error?: {
+    message?: string | null;
+  } | null;
+  metadata?: Record<string, string>;
+  amount_received?: number | null;
+  amount: number;
+  currency?: string | null;
+  payment_method?:
+    | string
+    | {
+        id?: string;
+        type?: string;
+        card?: {
+          brand?: string | null;
+          last4?: string | null;
+        } | null;
+      }
+    | null;
+  latest_charge?: string | StripeChargeLike;
+};
+
 @Injectable()
 export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CheckoutService.name);
@@ -90,6 +125,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     private readonly emailService: EmailService,
     private readonly stripeService: StripeService,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
   ) {}
 
   onModuleInit() {
@@ -306,7 +342,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const cancelUrl = this.attachSessionIdToUrl(dto.cancelUrl, sessionId);
     const stripeLocale = this.normalizeStripeCheckoutLocale(resolvedLocale);
     const customerEmail = await this.getStripeCheckoutCustomerEmail(userId);
-    const stripeMetadata: MetadataParam = {
+    const stripeMetadata: Record<string, string> = {
       userId,
       cartHash: prepared.cartHash,
       checkoutSessionId: sessionId,
@@ -558,7 +594,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   async processStripeWebhook(payload: Buffer, signature: string) {
-    let event: Event;
+    let event: StripeEvent;
     try {
       event = this.stripeService.constructWebhookEvent(payload, signature);
     } catch (error) {
@@ -732,7 +768,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async finalizePaidByPaymentIntent(
-    paymentIntent: PaymentIntent,
+    paymentIntent: StripePaymentIntentLike,
     source: string,
   ) {
     let session = await this.prisma.checkoutSession.findUnique({
@@ -778,7 +814,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private async finalizePaidSession(
     session: CheckoutSession,
-    paymentIntent: PaymentIntent,
+    paymentIntent: StripePaymentIntentLike,
     source: string,
   ) {
     const expectedAmountMinor = this.toStripeMinorAmount(
@@ -840,7 +876,6 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const paymentCard = await this.resolvePaymentCardSnapshot(paymentIntent);
 
     const createdOrder = await this.prisma.$transaction(async (tx) => {
-      // Pessimistic lock: SELECT FOR UPDATE prevents concurrent stock overwrites
       const productIds = snapshot.items.map((i) => i.productId);
       const lockedProducts = await tx.$queryRaw<
         { id: string; name: string; slug: string; stock: number }[]
@@ -863,8 +898,6 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
           );
         }
       }
-
-      // Get product images for snapshots
       const productImages = await tx.productImage.findMany({
         where: {
           productId: { in: productIds },
@@ -936,8 +969,6 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
           },
         },
       });
-
-      // Decrement stock (already locked by FOR UPDATE)
       for (const item of snapshot.items) {
         await tx.product.update({
           where: { id: item.productId },
@@ -948,8 +979,6 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
           },
         });
       }
-
-      // Record initial status transitions
       await tx.orderStatusHistory.createMany({
         data: [
           { orderId: order.id, status: 'PENDING' },
@@ -991,8 +1020,6 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
       return order;
     });
-
-    // Send order confirmation email (fire-and-forget, outside transaction)
     this.sendOrderEmail(
       session.userId,
       createdOrder,
@@ -1007,7 +1034,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private extractCardSnapshotFromPaymentIntent(
-    paymentIntent: PaymentIntent,
+    paymentIntent: StripePaymentIntentLike,
   ): PaymentCardSnapshot {
     const paymentMethod = paymentIntent.payment_method;
     if (paymentMethod && typeof paymentMethod !== 'string') {
@@ -1034,7 +1061,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async resolvePaymentCardSnapshot(
-    paymentIntent: PaymentIntent,
+    paymentIntent: StripePaymentIntentLike,
   ): Promise<PaymentCardSnapshot> {
     const directCardSnapshot =
       this.extractCardSnapshotFromPaymentIntent(paymentIntent);
@@ -1195,7 +1222,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private toPaymentSessionResponse(
     session: CheckoutSession,
-    paymentIntent: PaymentIntent | null,
+    paymentIntent: StripePaymentIntentLike | null,
     checkoutUrl?: string,
     stripeCheckoutSessionId?: string,
   ) {
@@ -1261,7 +1288,7 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
 
   private async resolveSessionPaymentIntent(
     session: CheckoutSession,
-  ): Promise<PaymentIntent | null> {
+  ): Promise<StripePaymentIntentLike | null> {
     if (this.isPaymentIntentRef(session.paymentIntentId)) {
       return this.stripeService.retrievePaymentIntent(session.paymentIntentId);
     }
@@ -1692,8 +1719,6 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     if (resolvedLocale === 'en') {
       return 'en';
     }
-
-    // Stripe doesn't have direct "uk" locale for Checkout UI.
     return 'auto';
   }
 
@@ -1726,12 +1751,12 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getSessionTtlMinutes() {
-    const value = Number(process.env.CHECKOUT_SESSION_TTL_MINUTES || 30);
+    const value = Number(this.configService.get('CHECKOUT_SESSION_TTL_MINUTES') || 30);
     return Number.isFinite(value) && value > 0 ? value : 30;
   }
 
   private getCleanupIntervalMs() {
-    const value = Number(process.env.CHECKOUT_SESSION_CLEANUP_MS || 300000);
+    const value = Number(this.configService.get('CHECKOUT_SESSION_CLEANUP_MS') || 300000);
     return Number.isFinite(value) && value >= 60000 ? value : 300000;
   }
 
@@ -1742,25 +1767,22 @@ export class CheckoutService implements OnModuleInit, OnModuleDestroy {
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
+    const dateKey = `${date.getFullYear()}-${month}-${day}`;
     const prefix = `ORD${year}${month}${day}`;
 
-    const latestOrder = await tx.order.findFirst({
-      where: {
-        orderNumber: {
-          startsWith: prefix,
+    const counter = await tx.orderNumberCounter.upsert({
+      where: { dateKey },
+      update: {
+        nextNumber: {
+          increment: 1,
         },
       },
-      orderBy: {
-        orderNumber: 'desc',
+      create: {
+        dateKey,
+        nextNumber: 1,
       },
     });
 
-    let sequence = 1;
-    if (latestOrder) {
-      const lastSequence = parseInt(latestOrder.orderNumber.slice(-4), 10);
-      sequence = lastSequence + 1;
-    }
-
-    return `${prefix}${sequence.toString().padStart(4, '0')}`;
+    return `${prefix}${counter.nextNumber.toString().padStart(4, '0')}`;
   }
 }

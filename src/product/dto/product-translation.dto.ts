@@ -1,4 +1,3 @@
-// dto/product-translation.dto.ts
 import { IsString, IsOptional, IsNotEmpty } from 'class-validator';
 
 export class ProductTranslationDto {

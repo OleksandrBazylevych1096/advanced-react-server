@@ -9,8 +9,6 @@ export class CountryService {
 
   async create(createCountryDto: CreateCountryDto) {
     const { translations, ...countryData } = createCountryDto;
-
-    // Перевіряємо унікальність коду
     const existingCountry = await this.prisma.country.findUnique({
       where: { code: countryData.code },
     });
@@ -48,8 +46,6 @@ export class CountryService {
       },
       orderBy: { name: 'asc' },
     });
-
-    // Трансформуємо для зручності
     return countries.map((country) => {
       const translation = country.translations?.find((t) => t.locale === locale);
       return {
@@ -109,8 +105,6 @@ export class CountryService {
     }
 
     const { translations, ...countryData } = updateCountryDto;
-
-    // Перевіряємо унікальність коду при зміні
     if (updateCountryDto.code && updateCountryDto.code !== existingCountry.code) {
       const codeExists = await this.prisma.country.findUnique({
         where: { code: updateCountryDto.code },
@@ -153,8 +147,6 @@ export class CountryService {
       where: { id },
     });
   }
-
-  // Метод для отримання перекладів країн для фасетів
   async getCountriesForFacets(
     countryCodes: string[],
     locale: string,
@@ -170,8 +162,6 @@ export class CountryService {
         },
       },
     });
-
-    // Створюємо Map для швидкого lookup
     const countryMap: Map<string, { code: string; name: string }> = new Map(
       countries.map((country) => {
         const translation = country.translations?.[0];

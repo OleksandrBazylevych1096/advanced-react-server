@@ -1,9 +1,10 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 
 @Injectable()
 export class EmailService {
+  private readonly logger = new Logger(EmailService.name);
   private transporter: nodemailer.Transporter;
 
   constructor(private configService: ConfigService) {
@@ -36,7 +37,10 @@ export class EmailService {
     try {
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
-      console.error('Failed to send order confirmation email:', error);
+      this.logger.error(
+        'Failed to send order confirmation email',
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 
@@ -62,7 +66,10 @@ export class EmailService {
     try {
       await this.transporter.sendMail(mailOptions);
     } catch (error) {
-      console.error('Failed to send email:', error);
+      this.logger.error(
+        'Failed to send email',
+        error instanceof Error ? error.stack : undefined,
+      );
       if (error.code === 'ECONNREFUSED') {
         throw new BadRequestException({ code: 'EMAIL_SERVER_UNAVAILABLE' });
       } else if (error.code === 'EAUTH') {

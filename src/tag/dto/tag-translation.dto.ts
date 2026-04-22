@@ -8,6 +8,9 @@ export class TagTranslationDto {
   name: string;
 
   @IsString()
+  slug: string;
+
+  @IsString()
   @IsOptional()
   description?: string;
 }

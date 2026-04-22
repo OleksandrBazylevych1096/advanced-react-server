@@ -48,8 +48,6 @@ export class SessionService {
     const normalizedUserAgent = params.userAgent ?? null;
 
     let session: Session | null = null;
-    // Reuse an active session for the same browser+ip fingerprint
-    // so repeated logins from one device do not create duplicates.
     if (normalizedIp && normalizedUserAgent) {
       session = await this.prisma.session.findFirst({
         where: {

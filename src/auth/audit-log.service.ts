@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AuthEventType, Prisma } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
@@ -6,7 +7,7 @@ export class AuditLogService {
   constructor(private readonly prisma: PrismaService) {}
 
   async log(event: {
-    type: string;
+    type: AuthEventType;
     userId?: string | null;
     ip?: string | null;
     userAgent?: string | null;
@@ -15,15 +16,14 @@ export class AuditLogService {
     try {
       await this.prisma.authEvent.create({
         data: {
-          type: event.type as any,
+          type: event.type,
           userId: event.userId ?? null,
           ip: event.ip ?? null,
           userAgent: event.userAgent ?? null,
-          metadata: (event.metadata ?? {}) as any,
+          metadata: (event.metadata ?? {}) as Prisma.InputJsonValue,
         },
       });
     } catch {
-      // Avoid auth flow failures if audit insert fails.
     }
   }
 }

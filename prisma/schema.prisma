@@ -63,6 +63,15 @@ model User {
   @@map("users")
 }
 
+model OrderNumberCounter {
+  dateKey    String   @id
+  nextNumber Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("order_number_counters")
+}
+
 model SearchHistory {
   id              String   @id @default(cuid())
   userId          String
@@ -167,10 +176,15 @@ model VerificationCode {
   type      VerificationType
   expiresAt DateTime
   isUsed    Boolean          @default(false)
+  attempts  Int              @default(0)
+  maxAttempts Int            @default(5)
+  blockedAt DateTime?
+  lastSentAt DateTime        @default(now())
   createdAt DateTime         @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId, type, isUsed, expiresAt])
   @@map("verification_codes")
 }
 
@@ -191,6 +205,8 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+  @@index([userId, revokedAt, expiresAt])
   @@map("refresh_tokens")
 }
 
@@ -421,6 +437,7 @@ model ProductImage {
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  @@index([productId])
   @@map("product_images")
 }
 
@@ -436,6 +453,7 @@ model CartItem {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([userId, productId])
+  @@index([userId])
   @@map("cart_items")
 }
 
@@ -638,6 +656,7 @@ model TagTranslation {
   tagId       String
   locale      String
   name        String
+  slug        String
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -645,6 +664,7 @@ model TagTranslation {
   tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([tagId, locale])
+  @@unique([locale, slug])
   @@map("tag_translations")
 }
 

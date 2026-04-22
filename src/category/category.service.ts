@@ -7,27 +7,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryI18nDto } from './dto/create-category-i18n.dto';
 import { UpdateCategoryI18nDto } from './dto/update-category-i18n.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { buildSlugMap, normalizeLocale } from '../common/i18n.util';
 
 @Injectable()
 export class CategoryService {
   constructor(private prisma: PrismaService) {}
 
   private normalizeLocale(locale?: string): string {
-    const normalized = (locale || 'en').trim().toLowerCase();
-    return normalized.split('-')[0] || 'en';
+    return normalizeLocale(locale);
   }
 
   private buildSlugMap(
     fallbackSlug?: string,
     translations?: Array<{ locale: string; slug: string }>,
   ) {
-    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
-    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
-
-    return {
-      en: enSlug ?? fallbackSlug ?? '',
-      de: deSlug ?? fallbackSlug ?? '',
-    };
+    return buildSlugMap(fallbackSlug, translations);
   }
 
   private getIncludeWithTranslations(locale?: string) {
@@ -61,7 +55,7 @@ export class CategoryService {
     category: any,
     locale: string = 'en',
   ) {
-    const normalizedLocale = this.normalizeLocale(locale);
+    const normalizedLocale = normalizeLocale(locale);
     const translation = category.translations?.find(
       (t: any) => t.locale === normalizedLocale,
     );
@@ -71,9 +65,9 @@ export class CategoryService {
       category.name = translation.name;
       category.slug = translation.slug;
       category.description = translation.description;
-      category.slugMap = this.buildSlugMap(fallbackSlug, category.translations);
+      category.slugMap = buildSlugMap(fallbackSlug, category.translations);
     } else {
-      category.slugMap = this.buildSlugMap(category.slug, category.translations);
+      category.slugMap = buildSlugMap(category.slug, category.translations);
     }
 
     if (category.parent) {
@@ -128,44 +122,30 @@ export class CategoryService {
     locale: string,
   ): Promise<{ id: string; name: string; slug: string; slugMap: { en: string; de: string } }[]> {
     locale = this.normalizeLocale(locale);
-    // Явно вказуємо тип для масиву breadcrumbs
     const breadcrumbs: { id: string; name: string; slug: string; slugMap: { en: string; de: string } }[] = [];
-
-    // Змінюємо тип currentId на string | null
     let currentId: string | null = categoryId;
-
-    // Проходимо по дереву вгору, поки є батьківські категорії (currentId не null)
     while (currentId) {
       const category = await this.prisma.category.findUnique({
         where: { id: currentId },
         include: {
           translations: locale ? { where: { locale } } : true,
-          parent: true, // Включаємо parent, щоб отримати parentId коректно
+          parent: true, // Р’РєР»СЋС‡Р°С”РјРѕ parent, С‰РѕР± РѕС‚СЂРёРјР°С‚Рё parentId РєРѕСЂРµРєС‚РЅРѕ
         },
       });
 
       if (!category) break;
-
-      // Використовуємо існуючу логіку трансформації для отримання правильної назви/slug
-      // Важливо: для getBreadcrumbs нам потрібні лише name, slug та id.
       const transformed = this.transformCategoryWithTranslation(
         { ...category },
         locale,
       );
-
-      // Перевіряємо, чи існують id, name та slug перед додаванням
       if (transformed.id && transformed.name && transformed.slug) {
-        // Додаємо на початок масиву (щоб порядок був: Root -> Child -> Current)
         breadcrumbs.unshift({
           id: transformed.id,
-          // Примусове приведення до string, оскільки трансформація гарантує їх наявність
           name: transformed.name as string,
           slug: transformed.slug as string,
           slugMap: transformed.slugMap,
         });
       }
-
-      // Оновлюємо currentId. Тепер currentId може бути string або null.
       currentId = category.parentId;
     }
 
@@ -174,13 +154,10 @@ export class CategoryService {
 
   async getBreadcrumbsBySlug(slug: string, locale: string = 'en') {
     locale = this.normalizeLocale(locale);
-    // 1. Знайти категорію за основним slug
     let category = await this.prisma.category.findUnique({
       where: { slug },
-      select: { id: true }, // Нам потрібен лише ID
+      select: { id: true }, // РќР°Рј РїРѕС‚СЂС–Р±РµРЅ Р»РёС€Рµ ID
     });
-
-    // 2. Якщо не знайдено, знайти за slug перекладу
     if (!category) {
       const translation = await this.prisma.categoryTranslation.findFirst({
         where: { slug },
@@ -195,16 +172,11 @@ export class CategoryService {
     if (!category) {
       throw new NotFoundException(`Category with slug "${slug}" not found`);
     }
-
-    // 3. Побудувати та повернути хлібні крихти
     return this.getBreadcrumbs(category.id, locale);
   }
-  // -----------------------------------
 
   async create(createCategoryDto: CreateCategoryI18nDto) {
     const { translations, ...categoryData } = createCategoryDto;
-
-    // Check if name already exists
     const existingName = await this.prisma.category.findUnique({
       where: { name: categoryData.name },
     });
@@ -212,8 +184,6 @@ export class CategoryService {
     if (existingName) {
       throw new BadRequestException('Category with this name already exists');
     }
-
-    // Check if slug already exists
     const existingSlug = await this.prisma.category.findUnique({
       where: { slug: categoryData.slug },
     });
@@ -221,8 +191,6 @@ export class CategoryService {
     if (existingSlug) {
       throw new BadRequestException('Category with this slug already exists');
     }
-
-    // Check translations slugs
     if (translations && translations.length > 0) {
       for (const translation of translations) {
         const existingTranslation =
@@ -240,8 +208,6 @@ export class CategoryService {
         }
       }
     }
-
-    // Check if parent exists (if provided)
     if (categoryData.parentId) {
       const parent = await this.prisma.category.findUnique({
         where: { id: categoryData.parentId },
@@ -313,7 +279,6 @@ export class CategoryService {
 
   async findBySlug(slug: string, locale: string = 'en') {
     locale = this.normalizeLocale(locale);
-    // First try to find by main category slug
     let category = await this.prisma.category.findUnique({
       where: { slug },
       include: {
@@ -335,8 +300,6 @@ export class CategoryService {
         },
       },
     });
-
-    // If not found, try to find by translation slug
     if (!category) {
       const translation = await this.prisma.categoryTranslation.findFirst({
         where: { slug },
@@ -384,8 +347,6 @@ export class CategoryService {
     if (!existingCategory) {
       throw new NotFoundException('Category not found');
     }
-
-    // Check for unique constraints if updating
     if (
       updateCategoryDto.name &&
       updateCategoryDto.name !== existingCategory.name
@@ -411,8 +372,6 @@ export class CategoryService {
         throw new BadRequestException('Category with this slug already exists');
       }
     }
-
-    // Check if parent exists and prevent circular reference
     if (updateCategoryDto.parentId) {
       if (updateCategoryDto.parentId === id) {
         throw new BadRequestException('Category cannot be its own parent');
@@ -425,8 +384,6 @@ export class CategoryService {
       if (!parent) {
         throw new NotFoundException('Parent category not found');
       }
-
-      // Check for circular references in the hierarchy
       await this.checkCircularReference(id, updateCategoryDto.parentId);
     }
 
@@ -488,13 +445,9 @@ export class CategoryService {
     if (!category) {
       throw new NotFoundException('Category not found');
     }
-
-    // Check if category has products
     if (category.products.length > 0) {
       throw new BadRequestException('Cannot delete category with products');
     }
-
-    // Check if category has children
     if (category.children.length > 0) {
       throw new BadRequestException(
         'Cannot delete category with subcategories',
@@ -533,13 +486,9 @@ export class CategoryService {
         name: 'asc',
       },
     });
-
-    // Transform categories before building tree
     const transformedCategories = categories.map((category) =>
       this.transformCategoryWithTranslation({ ...category }, locale),
     );
-
-    // Build tree structure using transformed categories
     const categoryMap = new Map<string, any>();
     transformedCategories.forEach((category) => {
       categoryMap.set(category.id, { ...category, children: [] });
@@ -562,7 +511,6 @@ export class CategoryService {
 
   async findChildrenBySlug(slug: string, locale: string = 'en') {
     locale = this.normalizeLocale(locale);
-    // 1. Try main slug
     let category = await this.prisma.category.findUnique({
       where: { slug },
       include: {
@@ -582,8 +530,6 @@ export class CategoryService {
         },
       },
     });
-
-    // 2. Try translation slug
     if (!category) {
       const translation = await this.prisma.categoryTranslation.findFirst({
         where: { slug },
@@ -615,8 +561,6 @@ export class CategoryService {
     if (!category) {
       throw new NotFoundException('Category not found');
     }
-
-    // 3. Transform children only
     return category.children.map((child: any) =>
       this.transformCategoryWithTranslation(child, locale),
     );

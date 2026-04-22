@@ -2,36 +2,33 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { Prisma } from '@prisma/client';
 import { ExchangeRateService } from '../exchange-rate/exchange-rate.service';
+import { buildSlugMap, normalizeLocale } from '../common/i18n.util';
 
 @Injectable()
 export class CartService {
+  private readonly logger = new Logger(CartService.name);
+
   constructor(
     private prisma: PrismaService,
     private exchangeRateService: ExchangeRateService,
   ) {}
 
   private normalizeLocale(locale?: string): string {
-    const normalized = (locale || 'en').trim().toLowerCase();
-    return normalized.split('-')[0] || 'en';
+    return normalizeLocale(locale);
   }
 
   private buildSlugMap(
     fallbackSlug?: string,
     translations?: Array<{ locale: string; slug: string }>,
   ) {
-    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
-    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
-
-    return {
-      en: enSlug ?? fallbackSlug ?? '',
-      de: deSlug ?? fallbackSlug ?? '',
-    };
+    return buildSlugMap(fallbackSlug, translations);
   }
 
   async addToCart(
@@ -41,8 +38,6 @@ export class CartService {
     currency: string = 'USD',
   ) {
     const { productId, quantity } = addToCartDto;
-
-    // Check if product exists and is active
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
     });
@@ -50,8 +45,6 @@ export class CartService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    // Check stock availability
     if (product.stock <= 0) {
       throw new BadRequestException('Product is not available');
     }
@@ -59,8 +52,6 @@ export class CartService {
     if (product.stock < quantity) {
       throw new BadRequestException('Insufficient stock');
     }
-
-    // Check if item already exists in cart
     const existingCartItem = await this.prisma.cartItem.findUnique({
       where: {
         userId_productId: {
@@ -71,10 +62,7 @@ export class CartService {
     });
 
     if (existingCartItem) {
-      // Update quantity if item exists
       const newQuantity = existingCartItem.quantity + quantity;
-
-      // Check stock for new quantity
       if (product.stock < newQuantity) {
         throw new BadRequestException(
           'Insufficient stock for requested quantity',
@@ -102,7 +90,6 @@ export class CartService {
       });
       return this.getCart(userId, locale, currency);
     } else {
-      // Create new cart item
       await this.prisma.cartItem.create({
         data: {
           userId,
@@ -154,8 +141,6 @@ export class CartService {
         ),
       })),
     );
-
-    // Calculate totals
     const subtotal = transformedCartItems.reduce((total, item) => {
       const itemProduct = item.product as any;
       const price =
@@ -192,8 +177,6 @@ export class CartService {
     updateCartItemDto: UpdateCartItemDto,
   ) {
     const { quantity } = updateCartItemDto;
-
-    // Check if cart item exists
     const cartItem = await this.prisma.cartItem.findUnique({
       where: {
         userId_productId: {
@@ -209,13 +192,9 @@ export class CartService {
     if (!cartItem) {
       throw new NotFoundException('Cart item not found');
     }
-
-    // If quantity is 0, remove item
     if (quantity === 0) {
       return this.removeFromCart(userId, productId);
     }
-
-    // Check stock availability
     if (cartItem.product.stock < quantity) {
       throw new BadRequestException('Insufficient stock');
     }
@@ -294,13 +273,9 @@ export class CartService {
 
     for (const item of cartItems) {
       const issues: string[] = [];
-
-      // Check if product is still available
       if (item.product.stock <= 0) {
         issues.push(this.localizeValidationIssue('PRODUCT_UNAVAILABLE', locale));
       }
-
-      // Check stock availability
       if (item.product.stock < item.quantity) {
         issues.push(
           this.localizeValidationIssue('INSUFFICIENT_STOCK', locale, {
@@ -328,7 +303,6 @@ export class CartService {
     locale: string = 'en',
     currency: string = 'USD',
   ) {
-    // Merge guest cart with user's existing cart
     for (const guestItem of guestCartItems) {
       try {
         await this.addToCart(userId, {
@@ -336,10 +310,8 @@ export class CartService {
           quantity: guestItem.quantity,
         });
       } catch (error) {
-        // Log error but continue with other items
-        console.error(
-          `Failed to sync cart item ${guestItem.productId}:`,
-          error.message,
+        this.logger.error(
+          `Failed to sync cart item ${guestItem.productId}: ${(error as Error).message}`,
         );
       }
     }
@@ -352,7 +324,7 @@ export class CartService {
     locale: string,
     currency: string,
   ) {
-    const normalizedLocale = this.normalizeLocale(locale);
+    const normalizedLocale = normalizeLocale(locale);
     const translation = product.translations?.find(
       (t: any) => t.locale === normalizedLocale,
     );
@@ -363,9 +335,9 @@ export class CartService {
       product.slug = translation.slug;
       product.shortDescription = translation.shortDescription;
       product.description = translation.description;
-      product.slugMap = this.buildSlugMap(fallbackSlug, product.translations);
+      product.slugMap = buildSlugMap(fallbackSlug, product.translations);
     } else {
-      product.slugMap = this.buildSlugMap(product.slug, product.translations);
+      product.slugMap = buildSlugMap(product.slug, product.translations);
     }
 
     const basePrice =
@@ -406,14 +378,14 @@ export class CartService {
 
     if (code === 'PRODUCT_UNAVAILABLE') {
       if (normalizedLocale === 'de') {
-        return 'Produkt ist nicht mehr verfügbar';
+        return 'Produkt ist nicht mehr verfГјgbar';
       }
       return 'Product is no longer available';
     }
 
     const available = params?.available ?? 0;
     if (normalizedLocale === 'de') {
-      return `Nur ${available} Stück auf Lager`;
+      return `Nur ${available} StГјck auf Lager`;
     }
     return `Only ${available} items in stock`;
   }

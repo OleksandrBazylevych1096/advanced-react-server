@@ -47,18 +47,18 @@ export class TagController {
   }
 
   @Get('search')
-  searchTags(@Query('q') search: string) {
-    return this.tagService.searchTags(search);
+  searchTags(@Query('q') search: string, @Query('locale') locale?: string) {
+    return this.tagService.searchTags(search, locale);
   }
 
   @Get('slug/:slug')
-  findBySlug(@Param('slug') slug: string) {
-    return this.tagService.findBySlug(slug);
+  findBySlug(@Param('slug') slug: string, @Query('locale') locale?: string) {
+    return this.tagService.findBySlug(slug, locale);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.tagService.findOne(id);
+  findOne(@Param('id') id: string, @Query('locale') locale?: string) {
+    return this.tagService.findOne(id, locale);
   }
 
   @Patch(':id')

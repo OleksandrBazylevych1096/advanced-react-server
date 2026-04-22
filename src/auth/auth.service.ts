@@ -5,7 +5,6 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UserService } from '../user/user.service';
 import { VerificationService } from '../verification/verification.service';
@@ -15,10 +14,28 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { VerifyCodeDto } from './dto/verify-code.dto';
 import { ResendCodeDto } from './dto/resend-code.dto';
-import { VerificationType, AuthProvider } from '@prisma/client';
+import {
+  AuthEventType,
+  AuthProvider,
+  OtpPurpose,
+  VerificationType,
+} from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { v4 as uuidv4 } from 'uuid';
 import * as crypto from 'crypto';
+import { AuthTokenService } from './token.service';
+import { OtpService } from './otp.service';
+import { PasswordRecoveryService } from './password-recovery.service';
+import { AuditLogService } from './audit-log.service';
+import {
+  AuthenticatedSessionResponse,
+  AuthResult,
+  isMfaChallengeResponse,
+  IssuedAuthTokens,
+  MfaChallengeResponse,
+  SessionUser,
+} from './auth.types';
+import { TwoFactorService } from './two-factor.service';
+import { sha256Hex } from './utils/crypto.util';
 
 const ACCOUNT_OLD_CONTACT_OTP_PURPOSES = [
   'account_email_change_old_verify',
@@ -74,14 +91,18 @@ type AccountFlowTokenPayload = {
 @Injectable()
 export class AuthService {
   constructor(
-    private prisma: PrismaService,
-    private userService: UserService,
-    private verificationService: VerificationService,
-    private jwtService: JwtService,
-    private configService: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly userService: UserService,
+    private readonly verificationService: VerificationService,
+    private readonly tokenService: AuthTokenService,
+    private readonly otpService: OtpService,
+    private readonly passwordRecoveryService: PasswordRecoveryService,
+    private readonly auditLogService: AuditLogService,
+    private readonly twoFactorService: TwoFactorService,
+    private readonly configService: ConfigService,
   ) {}
 
-  async register(registerDto: RegisterDto) {
+  async register(registerDto: RegisterDto): Promise<{ verificationRequired: 'email' | 'phone' }> {
     const existingUser = await this.userService.findByEmailOrPhone(
       registerDto.email,
       registerDto.phone,
@@ -131,6 +152,7 @@ export class AuthService {
           email: googleUser.email,
           googleId: googleUser.googleId,
           isVerified: true,
+          isEmailVerified: true,
           provider: AuthProvider.GOOGLE,
         },
       });
@@ -154,7 +176,7 @@ export class AuthService {
     }
   }
 
-  async verifyGoogleCode(code: string, req?: Request) {
+  async verifyGoogleCode(code: string, req?: Request): Promise<AuthResult> {
     const verification = await this.prisma.verificationCode.findFirst({
       where: {
         code,
@@ -174,14 +196,14 @@ export class AuthService {
       data: { isUsed: true },
     });
 
-    if ((verification.user as any).isTwoFactorEnabled) {
+    if (verification.user.isTwoFactorEnabled) {
       return this.buildMfaChallengeResponse(verification.user.id);
     }
 
     const tokens = await this.issueAndPersistTokens(verification.user.id, undefined, req);
 
     return {
-      user: verification.user,
+      user: this.mapUserForSession(verification.user),
       tokens,
     };
   }
@@ -211,7 +233,10 @@ export class AuthService {
     };
   }
 
-  async verifyRegistration(verifyCodeDto: VerifyCodeDto, req?: Request) {
+  async verifyRegistration(
+    verifyCodeDto: VerifyCodeDto,
+    req?: Request,
+  ): Promise<{ user: SessionUser; tokens: IssuedAuthTokens }> {
     const user = await this.userService.findByEmailOrPhone(
       verifyCodeDto.email,
       verifyCodeDto.phone,
@@ -236,7 +261,7 @@ export class AuthService {
     const tokens = await this.issueAndPersistTokens(fullUser.id, undefined, req);
 
     return {
-      user: fullUser,
+      user: this.mapUserForSession(fullUser),
       tokens,
     };
   }
@@ -257,7 +282,7 @@ export class AuthService {
       throw new BadRequestException({ code: 'USER_NOT_FOUND' });
     }
 
-    if (user.isVerified) {
+    if (this.userService.isUserVerified(user)) {
       throw new BadRequestException({ code: 'USER_ALREADY_VERIFIED' });
     }
 
@@ -288,24 +313,24 @@ export class AuthService {
     return;
   }
 
-  async login(loginDto: LoginDto, req?: Request) {
+  async login(loginDto: LoginDto, req?: Request): Promise<AuthResult> {
     const user = await this.validateUser(loginDto);
 
     if (user.provider === AuthProvider.GOOGLE) {
       throw new BadRequestException({ code: 'LOGIN_USE_GOOGLE' });
     }
 
-    if (!user.isVerified) {
+    if (!this.userService.isUserVerified(user)) {
       throw new UnauthorizedException({ code: 'ACCOUNT_NOT_VERIFIED' });
     }
 
-    if ((user as any).isTwoFactorEnabled) {
+    if (user.isTwoFactorEnabled) {
       return this.buildMfaChallengeResponse(user.id);
     }
 
     const tokens = await this.issueAndPersistTokens(user.id, undefined, req);
     return {
-      user,
+      user: this.mapUserForSession(user),
       tokens,
     };
   }
@@ -330,14 +355,13 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
 
-    if (!user.password) {
+    const passwordHash = this.userService.getPasswordHash(user);
+
+    if (!passwordHash) {
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      loginDto.password,
-      user.password,
-    );
+    const isPasswordValid = await bcrypt.compare(loginDto.password, passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS' });
     }
@@ -347,64 +371,63 @@ export class AuthService {
 
   async refreshTokens(
     refreshToken: string | undefined,
-    accessTokenFallback?: string,
     req?: Request,
-  ) {
+  ): Promise<{ user: SessionUser; tokens: IssuedAuthTokens }> {
     if (!refreshToken) {
-      return this.refreshFromAccessTokenFallback(accessTokenFallback, req);
+      throw new UnauthorizedException({ code: 'REFRESH_TOKEN_MISSING' });
     }
 
-    try {
-      const payload = this.verifyJwtOrUnauthorized<{ sub: string }>(
-        refreshToken,
-        this.configService.get('JWT_SECRET'),
-        'REFRESH_TOKEN_INVALID',
-      );
+    const payload = this.tokenService.verifyOrUnauthorized<{ sub: string; jti: string }>(
+      refreshToken,
+      this.tokenService.getRefreshSecret(),
+      'REFRESH_TOKEN_INVALID',
+    );
 
-      const user = await this.userService.findOne(payload.sub);
-      if (!user) {
-        throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
-      }
-      if (!user.isVerified) {
-        throw new UnauthorizedException({ code: 'ACCOUNT_NOT_VERIFIED' });
-      }
+    const user = await this.userService.findOne(payload.sub);
+    if (!user) {
+      throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
+    }
+    if (!this.userService.isUserVerified(user)) {
+      throw new UnauthorizedException({ code: 'ACCOUNT_NOT_VERIFIED' });
+    }
 
-      const decoded: any = this.jwtService.decode(refreshToken);
-      const jti = decoded?.jti as string | undefined;
-      if (!jti) {
-        throw new UnauthorizedException({ code: 'REFRESH_TOKEN_INVALID' });
-      }
+    const stored = await this.prisma.refreshToken.findUnique({
+      where: { jti: payload.jti },
+    });
 
-      const stored = await this.prisma.refreshToken.findUnique({
-        where: { jti },
+    if (!stored || stored.userId !== user.id || stored.revokedAt) {
+      await this.auditLogService.log({
+        type: AuthEventType.REFRESH_REUSE_DETECTED,
+        userId: user.id,
+        ...this.resolveRequestMeta(req),
       });
-
-      if (!stored || stored.userId !== user.id || stored.revokedAt) {
-        throw new ForbiddenException({ code: 'REFRESH_TOKEN_REVOKED' });
-      }
-      if (stored.expiresAt <= new Date()) {
-        throw new UnauthorizedException({ code: 'REFRESH_TOKEN_EXPIRED' });
-      }
-      const presentedHash = this.hashToken(refreshToken);
-      if (presentedHash !== stored.tokenHash) {
-        throw new ForbiddenException({ code: 'REFRESH_TOKEN_MISMATCH' });
-      }
-
-      const newTokens = await this.issueAndPersistTokens(user.id, stored.id, req);
-
-      return {
-        user,
-        tokens: newTokens,
-      };
-    } catch (error) {
-      if (
-        error instanceof UnauthorizedException &&
-        this.extractErrorCode(error) === 'REFRESH_TOKEN_INVALID'
-      ) {
-        return this.refreshFromAccessTokenFallback(accessTokenFallback, req);
-      }
-      throw error;
+      throw new ForbiddenException({ code: 'REFRESH_TOKEN_REVOKED' });
     }
+    if (stored.expiresAt <= new Date()) {
+      throw new UnauthorizedException({ code: 'REFRESH_TOKEN_EXPIRED' });
+    }
+
+    const presentedHash = this.hashToken(refreshToken);
+    if (presentedHash !== stored.tokenHash) {
+      await this.auditLogService.log({
+        type: AuthEventType.REFRESH_REUSE_DETECTED,
+        userId: user.id,
+        ...this.resolveRequestMeta(req),
+      });
+      throw new ForbiddenException({ code: 'REFRESH_TOKEN_MISMATCH' });
+    }
+
+    const newTokens = await this.issueAndPersistTokens(user.id, stored.id, req);
+    await this.auditLogService.log({
+      type: AuthEventType.REFRESH_SUCCESS,
+      userId: user.id,
+      ...this.resolveRequestMeta(req),
+    });
+
+    return {
+      user: this.mapUserForSession(user),
+      tokens: newTokens,
+    };
   }
 
   async logout(refreshToken: string | undefined) {
@@ -414,7 +437,7 @@ export class AuthService {
       where: { refreshTokenHash: tokenHash, isActive: true },
       select: { id: true },
     });
-    const decoded: any = this.jwtService.decode(refreshToken);
+    const decoded: any = this.tokenService.decode(refreshToken);
     const jti = decoded?.jti as string | undefined;
     if (!jti) return;
     await this.prisma.refreshToken.updateMany({
@@ -429,15 +452,18 @@ export class AuthService {
     }
   }
 
-  buildAuthSessionResponse(user: any, tokens: { accessToken: string }) {
+  buildAuthSessionResponse(
+    user: SessionUser | Record<string, unknown>,
+    tokens: Pick<IssuedAuthTokens, 'accessToken' | 'accessTokenExpiresAt'>,
+  ): AuthenticatedSessionResponse {
     return {
       user: this.mapUserForSession(user),
       accessToken: tokens.accessToken,
-      accessTokenExpiresAt: this.getAccessTokenExpiresAt(tokens.accessToken),
+      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
     };
   }
 
-  async sendOtpCompat(payload: OtpSendPayload, req?: Request) {
+  async sendOtpCompat(payload: OtpSendPayload, req?: Request): Promise<Record<string, unknown>> {
     if (
       payload.purpose === 'registration_email_verify' ||
       payload.purpose === 'registration_phone_verify'
@@ -459,10 +485,51 @@ export class AuthService {
       return this.sendAccountOtp(payload, user);
     }
 
+    if (payload.purpose === 'login_2fa') {
+      if (!payload.mfaToken) {
+        throw new BadRequestException({ code: 'MFA_TOKEN_REQUIRED' });
+      }
+      if (!payload.channel) {
+        throw new BadRequestException({ code: 'CHANNEL_REQUIRED' });
+      }
+
+      const decoded = this.tokenService.verifyOrUnauthorized<{ sub: string }>(
+        payload.mfaToken,
+        this.tokenService.getMfaSecret(),
+        'MFA_TOKEN_INVALID',
+      );
+      const user = await this.userService.findOne(decoded.sub);
+      if (!user) {
+        throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
+      }
+
+      const channel = payload.channel === 'email' ? 'EMAIL' : 'SMS';
+      const target =
+        channel === 'EMAIL'
+          ? this.normalizeEmailIdentifier(user.email ?? undefined)
+          : this.normalizePhoneIdentifier(user.phone ?? undefined);
+
+      await this.otpService.sendOtp({
+        userId: user.id,
+        channel,
+        purpose: OtpPurpose.LOGIN_2FA,
+        target,
+      });
+
+      return {
+        success: true,
+        channel: payload.channel,
+        maskedTarget: this.maskTarget(target, payload.channel),
+      };
+    }
+
     return { success: true };
   }
 
-  async verifyOtpCompat(payload: OtpVerifyPayload, req?: Request) {
+  async verifyOtpCompat(
+    payload: OtpVerifyPayload,
+    req?: Request,
+  ): Promise<Record<string, unknown>> {
     if (
       payload.purpose === 'registration_email_verify' ||
       payload.purpose === 'registration_phone_verify'
@@ -472,12 +539,16 @@ export class AuthService {
       if (!identifier) {
         throw new BadRequestException({ code: 'IDENTIFIER_REQUIRED' });
       }
-      await this.verifyRegistration({
+      const authResult = await this.verifyRegistration({
         email: isEmail ? identifier : undefined,
         phone: isEmail ? undefined : identifier,
         code: payload.code,
-      });
-      return { success: true };
+      }, req);
+      return {
+        ...this.buildAuthSessionResponse(authResult.user, authResult.tokens),
+        _refreshToken: authResult.tokens.refreshToken,
+        refreshTokenExpiresAt: authResult.tokens.refreshTokenExpiresAt,
+      };
     }
 
     if (this.isAccountOtpPurpose(payload.purpose)) {
@@ -489,66 +560,79 @@ export class AuthService {
       if (!payload.mfaToken) {
         throw new BadRequestException({ code: 'MFA_TOKEN_REQUIRED' });
       }
-      const decoded = this.verifyJwtOrUnauthorized<{ sub: string }>(
+      const decoded = this.tokenService.verifyOrUnauthorized<{ sub: string }>(
         payload.mfaToken,
-        this.configService.get('JWT_SECRET'),
+        this.tokenService.getMfaSecret(),
         'MFA_TOKEN_INVALID',
       );
       const user = await this.userService.findOne(decoded.sub);
       if (!user) {
         throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
       }
+      if (!payload.channel) {
+        throw new BadRequestException({ code: 'CHANNEL_REQUIRED' });
+      }
+
+      await this.otpService.verifyOtp({
+        userId: user.id,
+        channel: payload.channel === 'email' ? 'EMAIL' : 'SMS',
+        purpose: OtpPurpose.LOGIN_2FA,
+        code: payload.code,
+      });
       const tokens = await this.issueAndPersistTokens(user.id, undefined, req);
       return {
         ...this.buildAuthSessionResponse(user, tokens),
         _refreshToken: tokens.refreshToken,
+        refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
       };
     }
 
     return { success: true };
   }
 
-  async verifyTwoFactorCompat(payload: { mfaToken: string; code: string }, req?: Request) {
-    const decoded = this.verifyJwtOrUnauthorized<{ sub: string }>(
+  async verifyTwoFactorCompat(
+    payload: { mfaToken: string; code: string; method?: string },
+    req?: Request,
+  ) {
+    const decoded = this.tokenService.verifyOrUnauthorized<{ sub: string }>(
       payload.mfaToken,
-      this.configService.get('JWT_SECRET'),
+      this.tokenService.getMfaSecret(),
       'MFA_TOKEN_INVALID',
     );
     const user = await this.userService.findOne(decoded.sub);
     if (!user) {
       throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
     }
+    const method = payload.method ?? 'totp';
+    if (method === 'totp') {
+      await this.twoFactorService.verifyTotp(user.id, payload.code);
+    } else if (method === 'backup_code') {
+      await this.twoFactorService.verifyBackupCode(user.id, payload.code);
+    } else {
+      throw new BadRequestException({ code: 'UNSUPPORTED_TWO_FACTOR_METHOD' });
+    }
+
     const tokens = await this.issueAndPersistTokens(user.id, undefined, req);
     return {
       ...this.buildAuthSessionResponse(user, tokens),
       _refreshToken: tokens.refreshToken,
+      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
     };
   }
 
-   setupTwoFactorCompat() {
-    const backupCodes = Array.from({ length: 8 }, () =>
-      crypto.randomBytes(4).toString('hex').toUpperCase(),
-    );
-    return {
-      qrCodeDataUrl:
-        'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=',
-      backupCodes,
-    };
+  async setupTwoFactorCompat(userId: string) {
+    const user = await this.twoFactorService.getUserOrThrow(userId);
+    const label = user.email ?? user.phone ?? user.id;
+    return this.twoFactorService.setupTotp(userId, label);
   }
 
-  async enableTwoFactorCompat(userId: string) {
-    const user = await this.userService.findOne(userId);
-    if (!user) {
-      throw new NotFoundException({ code: 'USER_NOT_FOUND' });
-    }
+  async enableTwoFactorCompat(userId: string, code: string) {
+    await this.twoFactorService.enableTotp(userId, code);
     return { success: true };
   }
 
   async disableTwoFactorCompat(userId: string) {
-    const user = await this.userService.findOne(userId);
-    if (!user) {
-      throw new NotFoundException({ code: 'USER_NOT_FOUND' });
-    }
+    await this.twoFactorService.disable(userId);
     return { success: true };
   }
 
@@ -680,30 +764,36 @@ export class AuthService {
       return { success: true };
     }
 
-    const token = this.jwtService.sign(
-      { sub: user.id, purpose: 'password_reset' },
-      {
-        secret: this.configService.get('JWT_SECRET'),
-        expiresIn: '15m',
-      },
-    );
-    await this.verificationService.sendVerificationCode(normalized, token, isEmail);
+    const token = await this.passwordRecoveryService.createResetToken(user.id);
+    const frontendResetUrl =
+      this.configService.get<string>('FRONTEND_RESET_PASSWORD_URL') ||
+      `${(this.configService.get<string>('FRONTEND_URL') || '').replace(/\/+$/, '')}/reset-password`;
+    const resetLink = `${frontendResetUrl}?token=${encodeURIComponent(token)}`;
+    await this.passwordRecoveryService.sendResetLink(normalized, resetLink);
     return { success: true };
   }
 
   async resetPasswordCompat(token: string, newPassword: string) {
-    const payload = this.verifyJwtOrUnauthorized<{ sub: string; purpose?: string }>(
-      token,
-      this.configService.get('JWT_SECRET'),
-      'RESET_TOKEN_INVALID',
-    );
-    if (payload?.purpose !== 'password_reset' || !payload?.sub) {
+    const record = await this.passwordRecoveryService.consumeResetToken(token);
+    if (!record?.userId) {
       throw new UnauthorizedException({ code: 'RESET_TOKEN_INVALID' });
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
-      where: { id: payload.sub },
-      data: { password: passwordHash },
+      where: { id: record.userId },
+      data: { password: passwordHash, passwordHash },
+    });
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: record.userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.prisma.session.updateMany({
+      where: { userId: record.userId, isActive: true },
+      data: {
+        isActive: false,
+        revokedAt: new Date(),
+        revokedReason: 'password_reset',
+      },
     });
     return { success: true };
   }
@@ -720,6 +810,22 @@ export class AuthService {
     );
   }
 
+  private mapAccountOtpPurpose(purpose: AccountOtpPurpose): OtpPurpose {
+    switch (purpose) {
+      case 'account_email_add_verify':
+      case 'account_email_change_old_verify':
+      case 'account_email_change_new_verify':
+        return OtpPurpose.REGISTRATION_EMAIL_VERIFY;
+      case 'account_phone_add_verify':
+      case 'account_phone_change_old_verify':
+      case 'account_phone_change_new_verify':
+      case 'account_phone_remove_verify':
+        return OtpPurpose.PHONE_VERIFY;
+      default:
+        return OtpPurpose.PHONE_VERIFY;
+    }
+  }
+
   private createAccountOtpChallengeToken(params: {
     userId: string;
     purpose: AccountOtpPurpose;
@@ -733,9 +839,9 @@ export class AuthService {
       channel: params.channel,
       target: params.target,
     };
-    return this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_SECRET'),
-      expiresIn: '10m',
+    return this.tokenService.issueScopedToken(payload, {
+      secret: this.tokenService.getChallengeSecret(),
+      ttlSeconds: 10 * 60,
     });
   }
 
@@ -748,9 +854,9 @@ export class AuthService {
       throw new BadRequestException({ code: 'CHALLENGE_TOKEN_REQUIRED' });
     }
 
-    const payload = this.verifyJwtOrUnauthorized<AccountOtpChallengePayload>(
+    const payload = this.tokenService.verifyOrUnauthorized<AccountOtpChallengePayload>(
       params.token,
-      this.configService.get('JWT_SECRET'),
+      this.tokenService.getChallengeSecret(),
       'OTP_CHALLENGE_INVALID',
     );
 
@@ -771,9 +877,9 @@ export class AuthService {
       scope: 'account_flow',
       purpose,
     };
-    return this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_SECRET'),
-      expiresIn: '10m',
+    return this.tokenService.issueScopedToken(payload, {
+      secret: this.tokenService.getFlowSecret(),
+      ttlSeconds: 10 * 60,
     });
   }
 
@@ -786,9 +892,9 @@ export class AuthService {
       throw new BadRequestException({ code: 'FLOW_TOKEN_REQUIRED' });
     }
 
-    const payload = this.verifyJwtOrUnauthorized<AccountFlowTokenPayload>(
+    const payload = this.tokenService.verifyOrUnauthorized<AccountFlowTokenPayload>(
       params.token,
-      this.configService.get('JWT_SECRET'),
+      this.tokenService.getFlowSecret(),
       'FLOW_TOKEN_INVALID',
     );
 
@@ -879,9 +985,9 @@ export class AuthService {
       throw new UnauthorizedException({ code: 'ACCESS_TOKEN_REQUIRED' });
     }
 
-    const payload = this.verifyJwtOrUnauthorized<{ sub: string }>(
+    const payload = this.tokenService.verifyOrUnauthorized<{ sub: string }>(
       accessToken,
-      this.configService.get('JWT_SECRET'),
+      this.tokenService.getAccessSecret(),
       'ACCESS_TOKEN_INVALID',
     );
 
@@ -1000,15 +1106,12 @@ export class AuthService {
     channel: OtpChannel;
     target: string;
   }) {
-    const code = await this.verificationService.createVerificationCode(
-      params.userId,
-      VerificationType.REGISTRATION,
-    );
-    await this.verificationService.sendVerificationCode(
-      params.target,
-      code,
-      params.channel === 'email',
-    );
+    await this.otpService.sendOtp({
+      userId: params.userId,
+      channel: params.channel === 'email' ? 'EMAIL' : 'SMS',
+      purpose: this.mapAccountOtpPurpose(params.purpose),
+      target: params.target,
+    });
     return this.createAccountOtpChallengeToken({
       userId: params.userId,
       purpose: params.purpose,
@@ -1153,11 +1256,12 @@ export class AuthService {
       purpose,
     });
 
-    await this.verificationService.verifyCode(
+    await this.otpService.verifyOtp({
       userId,
-      payload.code,
-      VerificationType.REGISTRATION,
-    );
+      channel: challenge.channel === 'email' ? 'EMAIL' : 'SMS',
+      purpose: this.mapAccountOtpPurpose(purpose),
+      code: payload.code,
+    });
 
     if (purpose === 'account_email_change_old_verify') {
       return {
@@ -1190,6 +1294,7 @@ export class AuthService {
         data: {
           email: challenge.target,
           isVerified: true,
+          isEmailVerified: true,
           verifiedAt: new Date(),
         },
       });
@@ -1202,6 +1307,7 @@ export class AuthService {
         data: {
           email: challenge.target,
           isVerified: true,
+          isEmailVerified: true,
           verifiedAt: new Date(),
         },
       });
@@ -1214,6 +1320,7 @@ export class AuthService {
         data: {
           phone: challenge.target,
           isVerified: true,
+          isPhoneVerified: true,
           verifiedAt: new Date(),
         },
       });
@@ -1231,6 +1338,7 @@ export class AuthService {
         data: {
           phone: challenge.target,
           isVerified: true,
+          isPhoneVerified: true,
           verifiedAt: new Date(),
         },
       });
@@ -1251,7 +1359,7 @@ export class AuthService {
   }
 
   private hashToken(token: string): string {
-    return crypto.createHash('sha256').update(token).digest('hex');
+    return sha256Hex(token);
   }
 
   private extractCookieValues(req: Request | undefined, name: string): string[] {
@@ -1307,7 +1415,7 @@ export class AuthService {
   }
 
   private getAccessTokenExpiresAt(accessToken: string): string {
-    const decoded = this.jwtService.decode(accessToken);
+    const decoded = this.tokenService.decode(accessToken);
     if (decoded?.exp) {
       return new Date(decoded.exp * 1000).toISOString();
     }
@@ -1315,7 +1423,7 @@ export class AuthService {
     return new Date(Date.now() + fallbackMinutes * 60 * 1000).toISOString();
   }
 
-  private mapUserForSession(user: any) {
+  private mapUserForSession(user: any): SessionUser {
     const isEmailVerified = Boolean(
       user?.email && (user?.isEmailVerified ?? user?.isVerified),
     );
@@ -1334,140 +1442,28 @@ export class AuthService {
     };
   }
 
-  private extractJti(refreshToken: string | undefined): string | null {
-    if (!refreshToken) {
-      return null;
-    }
-    try {
-      const decoded: any = this.jwtService.decode(refreshToken);
-      return decoded?.jti ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  private verifyJwtOrUnauthorized<T extends object>(
-    token: string,
-    secret: string | undefined,
-    errorCode: string,
-  ): T {
-    try {
-      return this.jwtService.verify<T>(token, { secret });
-    } catch {
-      throw new UnauthorizedException({ code: errorCode });
-    }
-  }
-
-  private extractErrorCode(error: UnauthorizedException): string | undefined {
-    const response = error.getResponse() as
-      | { code?: string }
-      | string
-      | undefined;
-    if (typeof response === 'string') {
-      return undefined;
-    }
-    return response?.code;
-  }
-
-  private async refreshFromAccessTokenFallback(accessToken?: string, req?: Request) {
-    if (!accessToken) {
-      throw new UnauthorizedException({ code: 'REFRESH_TOKEN_MISSING' });
-    }
-    const payload = this.verifyJwtOrUnauthorized<{ sub: string }>(
-      accessToken,
-      this.configService.get('JWT_SECRET'),
-      'REFRESH_TOKEN_INVALID',
-    );
-    const user = await this.userService.findOne(payload.sub);
-    if (!user) {
-      throw new UnauthorizedException({ code: 'USER_NOT_FOUND' });
-    }
-    if (!user.isVerified) {
-      throw new UnauthorizedException({ code: 'ACCOUNT_NOT_VERIFIED' });
-    }
-
-    const tokens = await this.issueAndPersistTokens(user.id, undefined, req);
-    return {
-      user,
-      tokens,
-    };
-  }
-
-  private buildMfaChallengeResponse(userId: string) {
-    const mfaToken = this.jwtService.sign(
-      { sub: userId, purpose: 'mfa' },
-      {
-        secret: this.configService.get('JWT_SECRET'),
-        expiresIn: '5m',
-      },
-    );
+  private buildMfaChallengeResponse(userId: string): MfaChallengeResponse {
+    const mfa = this.tokenService.issueMfaToken({
+      sub: userId,
+      challengeId: crypto.randomUUID(),
+      methods: ['totp', 'otp_email', 'otp_sms', 'backup_code'],
+    });
     return {
       requiresTwoFactor: true as const,
-      mfaToken,
-      mfaTokenExpiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      mfaToken: mfa.token,
+      mfaTokenExpiresAt: mfa.expiresAt,
       availableMethods: ['totp', 'otp_email', 'otp_sms', 'backup_code'],
     };
-  }
-
-  private generateTokensRaw(userId: string, jti: string) {
-    const payload = { sub: userId, jti };
-
-    const accessToken = this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRATION_TIME'),
-    });
-
-    const refreshToken = this.jwtService.sign(payload, {
-      secret: this.configService.get('JWT_SECRET'),
-      expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME'),
-    });
-
-    return { accessToken, refreshToken };
-  }
-
-  private getRefreshExpiresDate(): Date {
-    const refreshExp =
-      this.configService.get<string>('JWT_REFRESH_EXPIRATION_TIME') || '7d';
-    const match = /^(\d+)([dhm])$/.exec(refreshExp);
-    const now = new Date();
-    if (!match) {
-      now.setDate(now.getDate() + 7);
-      return now;
-    }
-    const value = parseInt(match[1], 10);
-    const unit = match[2];
-    if (unit === 'd') now.setDate(now.getDate() + value);
-    if (unit === 'h') now.setHours(now.getHours() + value);
-    if (unit === 'm') now.setMinutes(now.getMinutes() + value);
-    return now;
   }
 
   private async issueAndPersistTokens(
     userId: string,
     revokeTokenId?: string,
     req?: Request,
-  ) {
-    const jti = uuidv4();
-    const tokens = this.generateTokensRaw(userId, jti);
-    const tokenHash = this.hashToken(tokens.refreshToken);
-    const expiresAt = this.getRefreshExpiresDate();
+  ): Promise<IssuedAuthTokens> {
     const requestMeta = this.resolveRequestMeta(req);
-
-    const created = await this.prisma.refreshToken.create({
-      data: {
-        userId,
-        jti,
-        tokenHash,
-        expiresAt,
-      },
-    });
-
-    if (revokeTokenId) {
-      await this.prisma.refreshToken.update({
-        where: { id: revokeTokenId },
-        data: { revokedAt: new Date(), replacedByTokenId: created.id },
-      });
-    }
+    const user = await this.userService.findOne(userId);
+    const roleNames = this.extractUserRoleNames(user);
 
     let existingSession: { id: string } | null = null;
     if (requestMeta.ip && requestMeta.userAgent) {
@@ -1483,11 +1479,34 @@ export class AuthService {
       });
     }
 
+    const sessionId = existingSession?.id ?? crypto.randomUUID();
+    const issued = this.tokenService.issueAccessAndRefreshTokens(
+      userId,
+      sessionId,
+      roleNames,
+    );
+
+    const created = await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        jti: issued.refreshJti,
+        tokenHash: issued.refreshHash,
+        expiresAt: new Date(issued.tokens.refreshTokenExpiresAt),
+      },
+    });
+
+    if (revokeTokenId) {
+      await this.prisma.refreshToken.update({
+        where: { id: revokeTokenId },
+        data: { revokedAt: new Date(), replacedByTokenId: created.id },
+      });
+    }
+
     if (existingSession) {
       await this.prisma.session.update({
         where: { id: existingSession.id },
         data: {
-          refreshTokenHash: tokenHash,
+          refreshTokenHash: issued.refreshHash,
           ip: requestMeta.ip,
           userAgent: requestMeta.userAgent,
           deviceInfo: {
@@ -1503,8 +1522,9 @@ export class AuthService {
     } else {
       await this.prisma.session.create({
         data: {
+          id: sessionId,
           userId,
-          refreshTokenHash: tokenHash,
+          refreshTokenHash: issued.refreshHash,
           ip: requestMeta.ip,
           userAgent: requestMeta.userAgent,
           deviceInfo: {
@@ -1517,11 +1537,11 @@ export class AuthService {
       });
     }
 
-    return tokens;
+    return issued.tokens;
   }
 
   getAccessCookieOptions() {
-    const isProd = process.env.NODE_ENV === 'production';
+    const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
     const sameSite = this.getSameSitePolicy();
     const secure = this.getSecureCookieFlag(sameSite, isProd);
     return {
@@ -1529,22 +1549,33 @@ export class AuthService {
       secure,
       sameSite,
       path: '/',
-      maxAge: 1000 * 60 * 15, // 15 minutes typical
+      maxAge: this.tokenService.getAccessTtlSeconds() * 1000,
     } as const;
   }
 
   getRefreshCookieOptions() {
-    const isProd = process.env.NODE_ENV === 'production';
+    const isProd = (this.configService.get<string>('NODE_ENV') || 'development') === 'production';
     const sameSite = this.getSameSitePolicy();
     const secure = this.getSecureCookieFlag(sameSite, isProd);
-    // Align with configured refresh expiry if needed; fallback ~7d
     return {
       httpOnly: true,
       secure,
       sameSite,
       path: '/',
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      maxAge: this.tokenService.getRefreshTtlSeconds() * 1000,
     } as const;
+  }
+
+  private extractUserRoleNames(user: any): string[] {
+    if (!Array.isArray(user?.roles)) {
+      return [];
+    }
+
+    return user.roles
+      .map((entry: any) =>
+        typeof entry?.role?.name === 'string' ? entry.role.name.toLowerCase() : null,
+      )
+      .filter((value: string | null): value is string => Boolean(value));
   }
 
   private getSameSitePolicy(): 'lax' | 'strict' | 'none' {

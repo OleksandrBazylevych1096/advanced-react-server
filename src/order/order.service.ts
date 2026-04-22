@@ -11,6 +11,7 @@ import { OrderQueryDto } from './dto/order-query.dto';
 import { CartService } from '../cart/cart.service';
 import { Prisma } from '@prisma/client';
 import { StripeService } from './stripe.service';
+import { buildSlugMap, normalizeLocale } from '../common/i18n.util';
 
 @Injectable()
 export class OrderService {
@@ -22,28 +23,8 @@ export class OrderService {
     private stripeService: StripeService,
   ) {}
 
-  private normalizeLocale(locale?: string): string {
-    const normalized = (locale || 'en').trim().toLowerCase();
-    return normalized.split('-')[0] || 'en';
-  }
-
-  private buildSlugMap(
-    fallbackSlug?: string,
-    translations?: Array<{ locale: string; slug: string }>,
-  ) {
-    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
-    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
-
-    return {
-      en: enSlug ?? fallbackSlug ?? '',
-      de: deSlug ?? fallbackSlug ?? '',
-    };
-  }
-
   async create(userId: string, createOrderDto: CreateOrderDto) {
     const orderItems = createOrderDto.items || [];
-
-    // Validate stock availability
     for (const item of orderItems) {
       const product = await this.prisma.product.findUnique({
         where: { id: item.productId },
@@ -57,8 +38,6 @@ export class OrderService {
         throw new BadRequestException(`Insufficient stock for ${product.name}`);
       }
     }
-
-    // Calculate totals
     const subtotal = orderItems.reduce(
       (total, item) => total + item.price * item.quantity,
       0,
@@ -67,13 +46,8 @@ export class OrderService {
     const taxAmount = createOrderDto.taxAmount || subtotal * 0.1; // 10% tax
     const discountAmount = createOrderDto.discountAmount || 0;
     const totalAmount = subtotal + shippingAmount + taxAmount - discountAmount;
-
-    // Generate order number
-    const orderNumber = await this.generateOrderNumber();
-
-    // Create order with transaction
     const order = await this.prisma.$transaction(async (tx) => {
-      // Create order
+      const orderNumber = await this.generateOrderNumber(tx);
       const newOrder = await tx.order.create({
         data: {
           userId,
@@ -120,8 +94,6 @@ export class OrderService {
           },
         },
       });
-
-      // Update product stock
       for (const item of orderItems) {
         await tx.product.update({
           where: { id: item.productId },
@@ -132,8 +104,6 @@ export class OrderService {
           },
         });
       }
-
-      // Clear cart if items were from cart
       if (!createOrderDto.items || createOrderDto.items.length === 0) {
         await tx.cartItem.deleteMany({
           where: { userId },
@@ -258,7 +228,7 @@ export class OrderService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException({ code: 'ORDER_NOT_FOUND' });
     }
 
     if (
@@ -378,7 +348,7 @@ export class OrderService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException({ code: 'ORDER_NOT_FOUND' });
     }
 
     return this.normalizeOrderForFrontend(order, locale);
@@ -391,7 +361,7 @@ export class OrderService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException({ code: 'ORDER_NOT_FOUND' });
     }
 
     if (order.status === 'CANCELLED') {
@@ -399,7 +369,7 @@ export class OrderService {
     }
 
     if (order.status === 'DELIVERED' || order.status === 'REFUNDED') {
-      throw new BadRequestException('Order cannot be cancelled');
+      throw new BadRequestException({ code: 'ORDER_CANNOT_BE_CANCELLED' });
     }
 
     if (order.stripePaymentIntentId && order.paymentStatus === 'PAID') {
@@ -442,7 +412,7 @@ export class OrderService {
     });
 
     if (!order) {
-      throw new NotFoundException('Order not found');
+      throw new NotFoundException({ code: 'ORDER_NOT_FOUND' });
     }
 
     const updatedOrder = await this.prisma.$transaction(async (tx) => {
@@ -525,7 +495,7 @@ export class OrderService {
   }
 
   private normalizeOrderForFrontend(order: any, locale: string) {
-    const normalizedLocale = this.normalizeLocale(locale);
+    const normalizedLocale = normalizeLocale(locale);
     const {
       shippingAddress,
       shippingCity,
@@ -572,7 +542,7 @@ export class OrderService {
   private localizeOrderProduct(product: any, locale: string) {
     if (!product) return product;
 
-    const normalizedLocale = this.normalizeLocale(locale);
+    const normalizedLocale = normalizeLocale(locale);
     const translation = product.translations?.find(
       (t: any) => t.locale === normalizedLocale,
     );
@@ -580,7 +550,7 @@ export class OrderService {
     if (!translation) {
       return {
         ...product,
-        slugMap: this.buildSlugMap(product.slug, product.translations),
+        slugMap: buildSlugMap(product.slug, product.translations),
         price: Number(product.price ?? 0),
         oldPrice:
           product.oldPrice !== null && product.oldPrice !== undefined
@@ -594,7 +564,7 @@ export class OrderService {
       ...product,
       name: translation.name,
       slug: translation.slug,
-      slugMap: this.buildSlugMap(product.slug, product.translations),
+      slugMap: buildSlugMap(product.slug, product.translations),
       shortDescription: translation.shortDescription,
       description: translation.description,
       price: Number(product.price ?? 0),
@@ -701,32 +671,26 @@ export class OrderService {
     return [...completed, cancelledEvent, refundedEvent, ...upcoming];
   }
 
-  private async generateOrderNumber(): Promise<string> {
+  private async generateOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
     const date = new Date();
     const year = date.getFullYear().toString().slice(-2);
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
-
+    const dateKey = `${date.getFullYear()}-${month}-${day}`;
     const prefix = `ORD${year}${month}${day}`;
-
-    // Find the latest order number for today
-    const latestOrder = await this.prisma.order.findFirst({
-      where: {
-        orderNumber: {
-          startsWith: prefix,
+    const counter = await tx.orderNumberCounter.upsert({
+      where: { dateKey },
+      update: {
+        nextNumber: {
+          increment: 1,
         },
       },
-      orderBy: {
-        orderNumber: 'desc',
+      create: {
+        dateKey,
+        nextNumber: 1,
       },
     });
 
-    let sequence = 1;
-    if (latestOrder) {
-      const lastSequence = parseInt(latestOrder.orderNumber.slice(-4));
-      sequence = lastSequence + 1;
-    }
-
-    return `${prefix}${sequence.toString().padStart(4, '0')}`;
+    return `${prefix}${counter.nextNumber.toString().padStart(4, '0')}`;
   }
 }

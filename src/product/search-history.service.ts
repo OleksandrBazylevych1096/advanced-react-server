@@ -160,8 +160,6 @@ export class SearchHistoryService {
     }
 
     const uniqueQueries = Array.from(normalizedToDisplay.values());
-
-    // Payload is expected from newest to oldest. Write in reverse so recency is preserved.
     for (let i = uniqueQueries.length - 1; i >= 0; i--) {
       await this.recordSearch(userId, uniqueQueries[i]);
     }

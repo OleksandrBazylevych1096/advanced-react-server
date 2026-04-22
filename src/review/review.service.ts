@@ -45,8 +45,6 @@ export class ReviewService {
 
   async create(userId: string, createReviewDto: CreateReviewDto) {
     const { productId, rating, title, comment } = createReviewDto;
-
-    // Check if product exists
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
     });
@@ -54,8 +52,6 @@ export class ReviewService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    // Check if user already reviewed this product
     const existingReview = await this.prisma.review.findUnique({
       where: {
         userId_productId: {
@@ -68,8 +64,6 @@ export class ReviewService {
     if (existingReview) {
       throw new BadRequestException('You have already reviewed this product');
     }
-
-    // Check if user has purchased this product (optional business logic)
     const userOrder = await this.prisma.orderItem.findFirst({
       where: {
         productId,
@@ -298,14 +292,11 @@ export class ReviewService {
     if (!review) {
       throw new NotFoundException('Review not found');
     }
-
-    // Check if user owns this review
     if (review.userId !== userId) {
       throw new ForbiddenException('You can only update your own reviews');
     }
 
     const { productId, ...updateData } = updateReviewDto;
-    // Don't allow changing productId in updates
 
     const updatedReview = await this.prisma.review.update({
       where: { id },
@@ -344,8 +335,6 @@ export class ReviewService {
     if (!review) {
       throw new NotFoundException('Review not found');
     }
-
-    // Check if user owns this review
     if (review.userId !== userId) {
       throw new ForbiddenException('You can only delete your own reviews');
     }
@@ -396,7 +385,6 @@ export class ReviewService {
   }
 
   async canUserReview(userId: string, productId: string): Promise<boolean> {
-    // Check if user already reviewed this product
     const existingReview = await this.prisma.review.findUnique({
       where: {
         userId_productId: {
@@ -409,8 +397,6 @@ export class ReviewService {
     if (existingReview) {
       return false;
     }
-
-    // Check if user has purchased this product
     const userOrder = await this.prisma.orderItem.findFirst({
       where: {
         productId,

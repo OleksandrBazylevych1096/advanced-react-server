@@ -25,8 +25,6 @@ export class ShippingAddressController {
     private readonly service: ShippingAddressService,
     private readonly nominatimService: NominatimService,
   ) {}
-
-  // ========== Nominatim endpoints ==========
   @Get('search')
   async searchAddresses(
     @Query() dto: SearchAddressDto,

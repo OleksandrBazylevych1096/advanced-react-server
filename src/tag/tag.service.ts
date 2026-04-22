@@ -3,27 +3,32 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { buildSlugMap, normalizeLocale } from '../common/i18n.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTagDto } from './dto/create-tag.dto';
 import { UpdateTagDto } from './dto/update-tag.dto';
 import { TagQueryDto } from './dto/tag-query.dto';
 import { AssignTagsDto, CreateTagsDto } from './dto/assign-tags.dto';
-import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class TagService {
   constructor(private prisma: PrismaService) {}
 
-  private buildSlugMap(fallbackSlug?: string) {
-    return {
-      en: fallbackSlug ?? '',
-      de: fallbackSlug ?? '',
-    };
+  private normalizeLocale(locale?: string): string {
+    return normalizeLocale(locale);
   }
 
-  private getIncludeWithTranslations(locale?: string) {
+  private buildSlugMap(
+    fallbackSlug?: string,
+    translations?: Array<{ locale: string; slug: string }>,
+  ) {
+    return buildSlugMap(fallbackSlug, translations);
+  }
+
+  private getIncludeWithTranslations() {
     return {
-      translations: locale ? { where: { locale } } : true,
+      translations: true,
       _count: {
         select: {
           products: true,
@@ -33,30 +38,60 @@ export class TagService {
   }
 
   private transformTagWithTranslation(tag: any, locale: string = 'en') {
-    // Шукаємо переклад для поточної локалі
-    const translation = tag.translations?.find((t: any) => t.locale === locale);
+    const normalizedLocale = this.normalizeLocale(locale);
+    const translation = tag.translations?.find(
+      (item: any) => item.locale === normalizedLocale,
+    );
 
-    // Якщо переклад знайдено, використовуємо його
     if (translation) {
+      const fallbackSlug = tag.slug;
+
       return {
         ...tag,
         name: translation.name || tag.name,
         description: translation.description || tag.description,
-        slugMap: this.buildSlugMap(tag.slug),
-        translations: undefined, // Видаляємо масив перекладів з результату
+        slug: translation.slug || tag.slug,
+        slugMap: this.buildSlugMap(fallbackSlug, tag.translations),
+        translations: undefined,
       };
     }
 
-    // Якщо переклад не знайдено, використовуємо базові значення
     const { translations, ...tagWithoutTranslations } = tag;
+
     return {
       ...tagWithoutTranslations,
-      slugMap: this.buildSlugMap(tag.slug),
+      slugMap: this.buildSlugMap(tag.slug, translations),
     };
   }
 
+  private async ensureTranslationSlugsAreUnique(
+    translations:
+      | Array<{ locale: string; slug: string }>
+      | undefined,
+    currentTagId?: string,
+  ) {
+    if (!translations?.length) {
+      return;
+    }
+
+    for (const translation of translations) {
+      const existingTranslation = await this.prisma.tagTranslation.findFirst({
+        where: {
+          locale: this.normalizeLocale(translation.locale),
+          slug: translation.slug,
+          ...(currentTagId ? { NOT: { tagId: currentTagId } } : {}),
+        } as any,
+      } as any);
+
+      if (existingTranslation) {
+        throw new BadRequestException(
+          `Tag with slug "${translation.slug}" already exists for locale "${translation.locale}"`,
+        );
+      }
+    }
+  }
+
   async create(createTagDto: CreateTagDto) {
-    // Check if name already exists
     const existingName = await this.prisma.tag.findUnique({
       where: { name: createTagDto.name },
     });
@@ -65,7 +100,6 @@ export class TagService {
       throw new BadRequestException('Tag with this name already exists');
     }
 
-    // Check if slug already exists
     const existingSlug = await this.prisma.tag.findUnique({
       where: { slug: createTagDto.slug },
     });
@@ -74,13 +108,18 @@ export class TagService {
       throw new BadRequestException('Tag with this slug already exists');
     }
 
+    await this.ensureTranslationSlugsAreUnique(createTagDto.translations);
+
     const { translations, ...tagData } = createTagDto;
 
     return this.prisma.tag.create({
       data: {
         ...tagData,
         translations: {
-          create: translations,
+          create: translations.map((translation) => ({
+            ...translation,
+            locale: this.normalizeLocale(translation.locale),
+          })),
         },
       },
       include: {
@@ -95,6 +134,7 @@ export class TagService {
   }
 
   async findAll(query: TagQueryDto, locale: string = 'en') {
+    const normalizedLocale = this.normalizeLocale(locale);
     const {
       search,
       isActive,
@@ -155,13 +195,15 @@ export class TagService {
         orderBy,
         skip,
         take: limit,
-        include: this.getIncludeWithTranslations(locale),
+        include: this.getIncludeWithTranslations(),
       }),
       this.prisma.tag.count({ where }),
     ]);
 
     return {
-      tags: tags.map((tag) => this.transformTagWithTranslation(tag, locale)),
+      tags: tags.map((tag) =>
+        this.transformTagWithTranslation(tag, normalizedLocale),
+      ),
       total,
       currentPage: page,
       totalPages: Math.ceil(total / limit),
@@ -169,10 +211,11 @@ export class TagService {
   }
 
   async findOne(id: string, locale: string = 'en') {
+    const normalizedLocale = this.normalizeLocale(locale);
     const tag = await this.prisma.tag.findUnique({
       where: { id },
       include: {
-        ...this.getIncludeWithTranslations(locale),
+        ...this.getIncludeWithTranslations(),
         products: {
           include: {
             images: true,
@@ -196,14 +239,15 @@ export class TagService {
       throw new NotFoundException('Tag not found');
     }
 
-    return this.transformTagWithTranslation(tag, locale);
+    return this.transformTagWithTranslation(tag, normalizedLocale);
   }
 
   async findBySlug(slug: string, locale: string = 'en') {
-    const tag = await this.prisma.tag.findUnique({
+    const normalizedLocale = this.normalizeLocale(locale);
+    let tag = await this.prisma.tag.findUnique({
       where: { slug },
       include: {
-        ...this.getIncludeWithTranslations(locale),
+        ...this.getIncludeWithTranslations(),
         products: {
           include: {
             images: true,
@@ -222,13 +266,47 @@ export class TagService {
         },
       },
     });
+
+    if (!tag) {
+      const translation = await this.prisma.tagTranslation.findFirst({
+        where: {
+          locale: normalizedLocale,
+          slug,
+        },
+        include: {
+          tag: {
+            include: {
+              ...this.getIncludeWithTranslations(),
+              products: {
+                include: {
+                  images: true,
+                  categories: true,
+                  _count: {
+                    select: {
+                      reviews: true,
+                      favoriteProducts: true,
+                    },
+                  },
+                },
+                take: 12,
+                orderBy: {
+                  createdAt: 'desc',
+                },
+              },
+            },
+          },
+        },
+      } as any);
+
+      tag = (translation as any)?.tag ?? null;
+    }
 
     if (!tag) {
       throw new NotFoundException('Tag not found');
     }
 
     return {
-      ...this.transformTagWithTranslation(tag, locale),
+      ...this.transformTagWithTranslation(tag, normalizedLocale),
       productCount: tag._count?.products || 0,
       products: tag.products,
     };
@@ -243,7 +321,6 @@ export class TagService {
       throw new NotFoundException('Tag not found');
     }
 
-    // Check for unique constraints if updating
     if (updateTagDto.name && updateTagDto.name !== existingTag.name) {
       const existingName = await this.prisma.tag.findUnique({
         where: { name: updateTagDto.name },
@@ -264,18 +341,21 @@ export class TagService {
       }
     }
 
+    await this.ensureTranslationSlugsAreUnique(updateTagDto.translations, id);
+
     const { translations, ...tagData } = updateTagDto;
 
     const data: any = { ...tagData };
     if (translations) {
-      // Delete existing translations
       await this.prisma.tagTranslation.deleteMany({
         where: { tagId: id },
       });
 
-      // Add new translations
       data.translations = {
-        create: translations,
+        create: translations.map((translation) => ({
+          ...translation,
+          locale: this.normalizeLocale(translation.locale),
+        })),
       };
     }
 
@@ -362,7 +442,6 @@ export class TagService {
     const createdTags: any[] = [];
 
     for (const tagName of tagNames) {
-      // Generate slug from name
       const slug = tagName
         .toLowerCase()
         .trim()
@@ -370,7 +449,6 @@ export class TagService {
         .replace(/[\s_-]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-      // Check if tag already exists
       const existingTag = await this.prisma.tag.findFirst({
         where: {
           OR: [{ name: tagName }, { slug }],
@@ -402,9 +480,10 @@ export class TagService {
   }
 
   async getPopularTags(limit: number = 10, locale: string = 'en') {
+    const normalizedLocale = this.normalizeLocale(locale);
     const tags = await this.prisma.tag.findMany({
       where: { isActive: true },
-      include: this.getIncludeWithTranslations(locale),
+      include: this.getIncludeWithTranslations(),
       orderBy: {
         products: {
           _count: 'desc',
@@ -414,7 +493,10 @@ export class TagService {
     });
 
     return tags.map((tag) => {
-      const transformedTag = this.transformTagWithTranslation(tag, locale);
+      const transformedTag = this.transformTagWithTranslation(
+        tag,
+        normalizedLocale,
+      );
       return {
         ...transformedTag,
         productCount: tag._count?.products || 0,
@@ -423,6 +505,7 @@ export class TagService {
   }
 
   async searchTags(search: string, locale: string = 'en') {
+    const normalizedLocale = this.normalizeLocale(locale);
     const tags = await this.prisma.tag.findMany({
       where: {
         AND: [
@@ -447,7 +530,7 @@ export class TagService {
           },
         ],
       },
-      include: this.getIncludeWithTranslations(locale),
+      include: this.getIncludeWithTranslations(),
       take: 20,
       orderBy: {
         products: {
@@ -456,6 +539,8 @@ export class TagService {
       },
     });
 
-    return tags.map((tag) => this.transformTagWithTranslation(tag, locale));
+    return tags.map((tag) =>
+      this.transformTagWithTranslation(tag, normalizedLocale),
+    );
   }
 }

@@ -10,7 +10,6 @@ export class FavoriteService {
   constructor(private prisma: PrismaService) {}
 
   async addToFavorites(userId: string, productId: string) {
-    // Check if product exists
     const product = await this.prisma.product.findUnique({
       where: { id: productId },
     });
@@ -18,8 +17,6 @@ export class FavoriteService {
     if (!product) {
       throw new NotFoundException('Product not found');
     }
-
-    // Check if already in favorites
     const existingFavorite = await this.prisma.favoriteProduct.findUnique({
       where: {
         userId_productId: {

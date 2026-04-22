@@ -14,6 +14,8 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { OrderQueryDto } from './dto/order-query.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUserId } from '../decorators/get-user-id.decorator';
+import { RolesGuard } from '../auth/rbac/roles.guard';
+import { Roles } from '../auth/rbac/roles.decorator';
 
 @Controller('orders')
 export class OrderController {
@@ -26,9 +28,9 @@ export class OrderController {
   }
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('moderator')
   findAll(@Query() query: OrderQueryDto) {
-    // This endpoint can be used by admins to see all orders
     return this.orderService.findAll(query, undefined, query.locale || 'en');
   }
 
@@ -39,11 +41,10 @@ export class OrderController {
   }
 
   @Get('stats')
-  @UseGuards(JwtAuthGuard)
-  getOrderStats(@GetUserId() userId?: string) {
-    // For regular users, pass userId to get their stats only
-    // For admins, don't pass userId to get all stats
-    return this.orderService.getOrderStats(userId);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('moderator')
+  getOrderStats() {
+    return this.orderService.getOrderStats();
   }
 
   @Get('my-stats')
@@ -83,9 +84,9 @@ export class OrderController {
   }
 
   @Patch(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('moderator')
   update(@Param('id') id: string, @Body() updateOrderDto: UpdateOrderDto) {
-    // This endpoint should typically be restricted to admins
     return this.orderService.update(id, updateOrderDto);
   }
 }

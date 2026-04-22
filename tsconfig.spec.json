@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolvePackageJsonExports": false,
+    "declaration": false,
+    "removeComments": false,
+    "noEmit": true,
+    "incremental": false,
+    "isolatedModules": false,
+    "types": ["node", "jest"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "**/*.spec.ts", "**/*.e2e-spec.ts"]
+}

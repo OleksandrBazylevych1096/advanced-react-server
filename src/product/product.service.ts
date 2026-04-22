@@ -10,6 +10,7 @@ import { UpdateProductI18nDto } from './dto/update-product-i18n.dto';
 import { ProductQueryI18nDto } from './dto/product-query-i18n.dto';
 import { Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import { buildSlugMap, normalizeLocale } from '../common/i18n.util';
 
 @Injectable()
 export class ProductService {
@@ -19,25 +20,18 @@ export class ProductService {
   ) {}
 
   private normalizeLocale(locale?: string): string {
-    const normalized = (locale || 'en').trim().toLowerCase();
-    return normalized.split('-')[0] || 'en';
+    return normalizeLocale(locale);
   }
 
   private buildSlugMap(
     fallbackSlug?: string,
     translations?: Array<{ locale: string; slug: string }>,
   ) {
-    const enSlug = translations?.find((t) => t.locale === 'en')?.slug;
-    const deSlug = translations?.find((t) => t.locale === 'de')?.slug;
-
-    return {
-      en: enSlug ?? fallbackSlug ?? '',
-      de: deSlug ?? fallbackSlug ?? '',
-    };
+    return buildSlugMap(fallbackSlug, translations);
   }
 
   private getIncludeWithTranslations(locale?: string) {
-    locale = this.normalizeLocale(locale);
+    locale = normalizeLocale(locale);
     return {
       categories: {
         include: {
@@ -76,14 +70,12 @@ export class ProductService {
       },
     };
   }
-
-  // Допоміжний метод для трансформації продукту з переkладами
   private async transformProductWithTranslation(
     product: any,
     locale: string = 'en',
     currency: string = 'USD',
   ) {
-    const normalizedLocale = this.normalizeLocale(locale);
+    const normalizedLocale = normalizeLocale(locale);
     const translation = product.translations?.find(
       (t: any) => t.locale === normalizedLocale,
     );
@@ -94,12 +86,10 @@ export class ProductService {
       product.slug = translation.slug;
       product.shortDescription = translation.shortDescription;
       product.description = translation.description;
-      product.slugMap = this.buildSlugMap(fallbackSlug, product.translations);
+      product.slugMap = buildSlugMap(fallbackSlug, product.translations);
     } else {
-      product.slugMap = this.buildSlugMap(product.slug, product.translations);
+      product.slugMap = buildSlugMap(product.slug, product.translations);
     }
-
-    // Handle price conversion
     if (product.price) {
       const priceNumber = product.price;
 
@@ -128,8 +118,6 @@ export class ProductService {
             )
           : oldPriceNumber;
     }
-
-    // Трансформуємо категорії
     if (product.categories) {
       product.categories = product.categories.map((category: any) => {
         const catTranslation = category.translations?.find(
@@ -143,7 +131,7 @@ export class ProductService {
             description: catTranslation.description,
             slug: catTranslation.slug,
             slugMap: this.buildSlugMap(category.slug, category.translations),
-            translations: undefined, // Прибираємо translations з відповіді
+            translations: undefined, // РџСЂРёР±РёСЂР°С”РјРѕ translations Р· РІС–РґРїРѕРІС–РґС–
           };
         }
         return {
@@ -153,8 +141,6 @@ export class ProductService {
         };
       });
     }
-
-    // Трансформуємо теги
     if (product.tags) {
       product.tags = product.tags.map((tag: any) => {
         const tagTranslation = tag.translations?.find(
@@ -172,16 +158,12 @@ export class ProductService {
         return { ...tag, translations: undefined };
       });
     }
-
-    // Прибираємо translations з основної відповіді
     delete product.translations;
     return product;
   }
 
   async create(createProductDto: CreateProductI18nDto) {
     const { images, tagIds, translations, ...productData } = createProductDto;
-
-    // Перевіряємо унікальність slug для кожної мови
     if (translations && translations.length > 0) {
       for (const translation of translations) {
         const existingTranslation =
@@ -201,8 +183,6 @@ export class ProductService {
         }
       }
     }
-
-    // Перевіряємо основний slug
     const existingSlug = await this.prisma.product.findUnique({
       where: { slug: productData.slug },
     });
@@ -257,10 +237,6 @@ export class ProductService {
     } = query;
 
     const normalizedLocale = this.normalizeLocale(locale);
-
-    // =====================================================================
-    // 1. Категорії (з урахуванням сабкатегорій)
-    // =====================================================================
     let categoryIds: string[] = [];
 
     if (categoryId) {
@@ -270,10 +246,6 @@ export class ProductService {
     if (categorySlug) {
       categoryIds = await this.getCategoryIdsBySlug(categorySlug, normalizedLocale);
     }
-
-    // =====================================================================
-    // 2. БАЗОВИЙ WHERE (для продуктів)
-    // =====================================================================
     const baseAnd: Prisma.ProductWhereInput[] = [
       { isActive: true },
 
@@ -326,10 +298,6 @@ export class ProductService {
     const where: Prisma.ProductWhereInput = {
       AND: baseAnd,
     };
-
-    // =====================================================================
-    // 3. SORT
-    // =====================================================================
     let orderBy:
       | Prisma.ProductOrderByWithRelationInput
       | Prisma.ProductOrderByWithRelationInput[];
@@ -341,15 +309,7 @@ export class ProductService {
     } else {
       orderBy = { [sortBy]: sortOrder };
     }
-
-    // =====================================================================
-    // 4. PAGINATION
-    // =====================================================================
     const skip = (page - 1) * limit;
-
-    // =====================================================================
-    // 5. FACETS (без власного фільтра)
-    // =====================================================================
 
     const whereWithoutPrice: Prisma.ProductWhereInput = {
       AND: baseAnd.filter((f: any) => !f.price),
@@ -366,10 +326,6 @@ export class ProductService {
     const whereWithoutStock: Prisma.ProductWhereInput = {
       AND: baseAnd.filter((f: any) => !f.stock),
     };
-
-    // =====================================================================
-    // 6. QUERIES (паралельно)
-    // =====================================================================
     const [
       products,
       total,
@@ -387,15 +343,11 @@ export class ProductService {
       }),
 
       this.prisma.product.count({ where }),
-
-      // PRICE FACET
       this.prisma.product.aggregate({
         where: whereWithoutPrice,
         _min: { price: true },
         _max: { price: true },
       }),
-
-      // BRAND FACET
       this.prisma.product.groupBy({
         by: ['brand'],
         where: {
@@ -404,8 +356,6 @@ export class ProductService {
         },
         _count: { _all: true },
       }),
-
-      // COUNTRY FACET
       this.prisma.product.groupBy({
         by: ['country'],
         where: {
@@ -414,8 +364,6 @@ export class ProductService {
         },
         _count: { _all: true },
       }),
-
-      // STOCK FACET
       this.prisma.product.groupBy({
         by: ['stock'],
         where: whereWithoutStock,
@@ -449,19 +397,11 @@ export class ProductService {
         country.translations?.[0]?.name || country.name || country.code,
       ]),
     );
-
-    // =====================================================================
-    // 7. TRANSFORM PRODUCTS (i18n + currency)
-    // =====================================================================
     const transformedProducts = await Promise.all(
       products.map((p) =>
         this.transformProductWithTranslation(p, normalizedLocale, currency),
       ),
     );
-
-    // =====================================================================
-    // 8. FACETS NORMALIZATION + CURRENCY CONVERSION
-    // =====================================================================
     const inStockCount = stockFacetRaw.reduce(
       (acc, s) => {
         if (s.stock > 0) acc.true += s._count._all;
@@ -470,8 +410,6 @@ export class ProductService {
       },
       { true: 0, false: 0 },
     );
-
-    // Конвертуємо мін/макс ціни для facets
     let minPriceFacet = priceFacet._min.price;
     let maxPriceFacet = priceFacet._max.price;
 
@@ -489,10 +427,6 @@ export class ProductService {
           .then((n) => new Decimal(n)),
       ]);
     }
-
-    // =====================================================================
-    // 9. RESPONSE
-    // =====================================================================
     const totalPages = Math.ceil(total / limit);
 
     return {
@@ -523,9 +457,6 @@ export class ProductService {
       },
     };
   }
-  // =======================================================================
-  // ======================== ДОПОМІЖНІ МЕТОДИ ===============================
-  // =======================================================================
 
   private async getCategoryWithDescendantsIds(
     categoryId: string,
@@ -609,7 +540,6 @@ export class ProductService {
     currency: string = 'USD',
   ) {
     locale = this.normalizeLocale(locale);
-    // Спочатку шукаємо по переkладу
     let product = await this.prisma.product.findFirst({
       where: {
         translations: {
@@ -621,8 +551,6 @@ export class ProductService {
       },
       include: this.getIncludeWithTranslations(locale),
     });
-
-    // Якщо не знайдено по переkладу, шукаємо по основному slug
     if (!product) {
       product = await this.prisma.product.findUnique({
         where: { slug },
@@ -666,8 +594,6 @@ export class ProductService {
 
     const { images, tagIds, categoryIds, translations, ...productData } =
       updateProductDto;
-
-    // Перевіряємо унікальність slug для переkладів
     if (translations && translations.length > 0) {
       for (const translation of translations) {
         const existingTranslation =
@@ -853,11 +779,7 @@ export class ProductService {
           typeof product.price === 'number'
             ? product.price
             : product.price.toNumber();
-
-        // Calculate the discounted price in USD first
         const discountedPrice = originalPrice * 0.9; // 10% discount
-
-        // Convert both prices to target currency if needed
         const [convertedOriginalPrice, convertedDiscountedPrice] =
           await Promise.all([
             currency !== 'USD'
@@ -875,8 +797,6 @@ export class ProductService {
                 )
               : discountedPrice,
           ]);
-
-        // Get the transformed product with translations
         const transformedProduct = await this.transformProductWithTranslation(
           {
             ...product,

@@ -193,11 +193,8 @@ export class ProductController {
   remove(@Param('id') id: string) {
     return this.productService.remove(id);
   }
-
-  // Додаткові ендпоінти для роботи з переkладами
   @Get(':id/translations')
   async getProductTranslations(@Param('id') id: string) {
-    // Отримуємо всі переклади продукту
     const product = await this.productService.findOne(id);
     return product.translations;
   }

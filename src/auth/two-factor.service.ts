@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { TwoFactorMethod } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { TOTP, NobleCryptoPlugin, ScureBase32Plugin } from 'otplib';
 import * as QRCode from 'qrcode';
@@ -39,7 +44,7 @@ export class TwoFactorService {
       where: { id: userId },
       data: {
         twoFactorSecret: this.crypto.encrypt(secret),
-        twoFactorMethod: 'TOTP' as any,
+        twoFactorMethod: TwoFactorMethod.TOTP,
       },
     });
     return { qrCodeDataUrl, backupCodes: backupCodesPlain };
@@ -55,8 +60,16 @@ export class TwoFactorService {
     if (!result.valid) throw new UnauthorizedException({ code: 'TOTP_INVALID' });
     await this.prisma.user.update({
       where: { id: userId },
-      data: { isTwoFactorEnabled: true, twoFactorMethod: 'TOTP' as any },
+      data: { isTwoFactorEnabled: true, twoFactorMethod: TwoFactorMethod.TOTP },
     });
+  }
+
+  async getUserOrThrow(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException({ code: 'USER_NOT_FOUND' });
+    }
+    return user;
   }
 
   async verifyTotp(userId: string, code: string) {

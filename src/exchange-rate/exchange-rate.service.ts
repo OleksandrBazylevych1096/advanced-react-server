@@ -22,7 +22,6 @@ export class ExchangeRateService {
   }
 
   private async getRates(): Promise<{ [key: string]: number }> {
-    // Refresh rates if they are older than 1 hour
     if (
       !this.lastUpdate ||
       new Date().getTime() - this.lastUpdate.getTime() > 3600000
@@ -46,15 +45,9 @@ export class ExchangeRateService {
     if (!rates[fromCurrency] || !rates[toCurrency]) {
       throw new HttpException('Invalid currency code', HttpStatus.BAD_REQUEST);
     }
-
-    // Convert to USD first (if not already in USD)
     const amountInUSD =
       fromCurrency === 'USD' ? amount : amount / rates[fromCurrency];
-
-    // Convert from USD to target currency
     const convertedAmount = amountInUSD * rates[toCurrency];
-
-    // Round to 2 decimal places
     return Math.round(convertedAmount * 100) / 100;
   }
 }

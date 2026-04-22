@@ -21,7 +21,26 @@ export class RolesGuard implements CanActivate {
     if (!required?.length) return true;
 
     const req = context.switchToHttp().getRequest();
-    const userRoles: string[] = Array.isArray(req.user?.roles) ? req.user.roles : [];
+    const userRoles: string[] = Array.isArray(req.user?.roles)
+      ? req.user.roles
+          .map((roleEntry: unknown) => {
+            if (typeof roleEntry === 'string') {
+              return roleEntry.toLowerCase();
+            }
+            if (
+              roleEntry &&
+              typeof roleEntry === 'object' &&
+              'role' in roleEntry &&
+              roleEntry.role &&
+              typeof roleEntry.role === 'object' &&
+              'name' in roleEntry.role
+            ) {
+              return String(roleEntry.role.name).toLowerCase();
+            }
+            return null;
+          })
+          .filter((value: string | null): value is string => Boolean(value))
+      : [];
     if (!userRoles.length) return false;
     const maxUserRank = Math.max(...userRoles.map((r) => rank[r] ?? 0));
     return required.some((role) => maxUserRank >= (rank[role] ?? 999));

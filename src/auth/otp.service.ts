@@ -5,6 +5,7 @@ import {
   HttpStatus,
   UnauthorizedException,
 } from '@nestjs/common';
+import { OtpChannel, OtpPurpose } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { BCRYPT_ROUNDS, EMAIL_PROVIDER, SMS_PROVIDER } from './auth.constants';
@@ -14,6 +15,11 @@ import type {
 } from './interfaces/notification-provider.interfaces';
 import { randomNumericCode } from './utils/crypto.util';
 import { RedisService } from 'src/redis/redis.service';
+
+const CHANNEL_MAP: Record<'SMS' | 'EMAIL', OtpChannel> = {
+  SMS: 'SMS',
+  EMAIL: 'EMAIL',
+};
 
 @Injectable()
 export class OtpService {
@@ -36,7 +42,7 @@ export class OtpService {
   async sendOtp(params: {
     userId: string;
     channel: 'SMS' | 'EMAIL';
-    purpose: string;
+    purpose: OtpPurpose;
     target: string;
   }) {
     if (params.channel === 'SMS') {
@@ -66,8 +72,8 @@ export class OtpService {
     await this.prisma.otpCode.updateMany({
       where: {
         userId: params.userId,
-        channel: params.channel as any,
-        purpose: params.purpose as any,
+        channel: CHANNEL_MAP[params.channel],
+        purpose: params.purpose,
         usedAt: null,
         blockedAt: null,
       },
@@ -77,8 +83,8 @@ export class OtpService {
     await this.prisma.otpCode.create({
       data: {
         userId: params.userId,
-        channel: params.channel as any,
-        purpose: params.purpose as any,
+        channel: CHANNEL_MAP[params.channel],
+        purpose: params.purpose,
         codeHash,
         expiresAt,
         deliveryTargetSnapshot: params.target,
@@ -95,14 +101,14 @@ export class OtpService {
   async verifyOtp(params: {
     userId: string;
     channel: 'SMS' | 'EMAIL';
-    purpose: string;
+    purpose: OtpPurpose;
     code: string;
   }) {
     const record = await this.prisma.otpCode.findFirst({
       where: {
         userId: params.userId,
-        channel: params.channel as any,
-        purpose: params.purpose as any,
+        channel: CHANNEL_MAP[params.channel],
+        purpose: params.purpose,
         usedAt: null,
         blockedAt: null,
       },
