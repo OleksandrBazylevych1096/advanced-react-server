@@ -65,10 +65,11 @@ export class ShippingAddressService {
 
   async update(id: string, userId: string, dto: UpdateAddressDto) {
     await this.findOne(id, userId);
+    const { country: countryInput, ...addressData } = dto;
     const country =
-      dto.country === undefined
+      countryInput === undefined
         ? undefined
-        : await this.resolveCountryCode(dto.country);
+        : await this.resolveCountryCode(countryInput);
 
     if (dto.isDefault) {
       await this.prisma.shippingAddress.updateMany({
@@ -80,7 +81,7 @@ export class ShippingAddressService {
     return this.prisma.shippingAddress.update({
       where: { id },
       data: {
-        ...dto,
+        ...addressData,
         ...(country === undefined ? {} : { country }),
       },
     });
@@ -136,7 +137,9 @@ export class ShippingAddressService {
     return address;
   }
 
-  private async resolveCountryCode(country?: string): Promise<string | undefined> {
+  private async resolveCountryCode(
+    country?: string,
+  ): Promise<string | undefined> {
     const normalizedInput = country?.trim();
 
     if (!normalizedInput) {
@@ -177,7 +180,9 @@ export class ShippingAddressService {
     });
 
     if (!countryEntity) {
-      throw new BadRequestException('Country must be a valid ISO code or known country name');
+      throw new BadRequestException(
+        'Country must be a valid ISO code or known country name',
+      );
     }
 
     return countryEntity.code.toUpperCase();
